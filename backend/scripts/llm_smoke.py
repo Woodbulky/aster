@@ -21,10 +21,15 @@ async def main() -> None:
     t0 = time.perf_counter()
     first = None
     provider = None
+    text, reasoning = "", 0
     async for c in chat_stream(s, PROMPT, max_tokens=200, temperature=0.2):
         if first is None:
             first, provider = time.perf_counter() - t0, c.provider
+        text += c.delta.get("content") or ""
+        reasoning += len(c.delta.get("reasoning") or c.delta.get("reasoning_content") or "")
         print(c.delta.get("content") or "", end="", flush=True)
+    if not text.strip():
+        print(f"!! NO REPLY TEXT (reasoning chars={reasoning})", end="")
     print(
         f"\n\nprovider={provider}  first_token={first:.2f}s  total={time.perf_counter() - t0:.2f}s"
     )

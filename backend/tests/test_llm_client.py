@@ -276,3 +276,13 @@ def test_error_body_with_image_is_redacted(monkeypatch: pytest.MonkeyPatch, capl
         collect(s(**FB), DOC, sensitive_kind="document_image", user_id="u1")
     assert "A" * 80 not in str(e.value) and "A" * 80 not in caplog.text
     assert "[redacted]" in str(e.value)
+
+
+def test_gpu_thinking_off_by_default_fallback_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = use_transport(monkeypatch, lambda r: httpx.Response(200, content=sse("ok")))
+    collect(s(gpu_url_override="https://gpu.example", **FB), HELLO)
+    assert json.loads(seen[0].content)["reasoning_effort"] == "none"
+    collect(s(gpu_url_override="https://gpu.example", **FB), HELLO, reasoning_effort="low")
+    assert json.loads(seen[1].content)["reasoning_effort"] == "low"  # caller wins
+    collect(s(**FB), HELLO)
+    assert "reasoning_effort" not in json.loads(seen[2].content)
