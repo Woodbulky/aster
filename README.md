@@ -11,7 +11,21 @@ A multilingual voice + chat assistant that helps students research, verify, and 
 | `.claude/commands/` | `/milestone`, `/guardrails`, `/status` |
 | `supabase/migrations/0001_init.sql` | Full schema with RLS, storage bucket, audit hash chain, endpoint registration |
 | `gpu/aster_gpu_worker.ipynb` | Kaggle 2×T4 worker (LLM/vision + ASR + OCR behind one authenticated gateway + Cloudflare tunnel) |
-| `render.yaml` | Render Blueprint for the backend (added in M0) |
+| `render.yaml` | Render Blueprint for the backend (web goes to Vercel) |
 | `ops/phone/` | Optional backup: Termux scripts to run the backend + tunnel on the phone |
 | `knowledge/` | Verified scheme packs (template inside) |
 | `backend/`, `web/` | Built by Claude Code from M0 (env examples included) |
+
+## Run locally
+```bash
+# backend → http://localhost:8000/health
+cd backend && cp .env.example .env && uv sync
+uv run uvicorn app.main:app --reload --port 8000
+uv run pytest -q && uv run ruff check . && uv run ruff format --check .
+
+# web → http://localhost:3000
+cd web && cp .env.local.example .env.local && pnpm install
+pnpm dev
+pnpm lint && pnpm typecheck && pnpm build
+```
+Deploy: push to `main` → Render redeploys the backend from `render.yaml`.

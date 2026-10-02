@@ -1,0 +1,59 @@
+# Render Blueprint: backend only (web/ deploys to Vercel).
+# Python 3.12 is pinned by backend/.python-version; uv is used because backend/uv.lock exists.
+# sync:false values are prompted only on first Blueprint creation; add new keys in the dashboard later.
+services:
+  - type: web
+    name: aster-backend
+    runtime: python
+    rootDir: backend
+    region: singapore
+    plan: free
+    buildCommand: uv sync --frozen --no-dev
+    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        sync: false
+      - key: LOG_LEVEL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: GATEWAY_TOKEN
+        sync: false
+      - key: GPU_WORKER_NAME
+        sync: false
+      - key: GPU_STALE_SECONDS
+        sync: false
+      - key: GPU_URL_OVERRIDE
+        sync: false
+      - key: BRAIN_MODEL
+        sync: false
+      - key: FALLBACK_LLM_BASE_URL
+        sync: false
+      - key: FALLBACK_LLM_API_KEY
+        sync: false
+      - key: FALLBACK_LLM_MODEL
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SARVAM_STT_MODEL
+        sync: false
+      - key: SARVAM_TTS_MODEL
+        sync: false
+      - key: SARVAM_TTS_VOICE_MR
+        sync: false
+      - key: SARVAM_TTS_VOICE_HI
+        sync: false
+      - key: SARVAM_TTS_VOICE_EN
+        sync: false
+      - key: BHASHINI_USER_ID
+        sync: false
+      - key: BHASHINI_ULCA_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
