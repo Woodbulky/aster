@@ -37,6 +37,10 @@ External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-
 | OCR | Kaggle `/ocr` → fallback vision LLM asked for lines (no bbox; mark `bbox=null`) | 30 s |
 | Search | Tavily → knowledge pack only | 10 s |
 
+`LLM_PRIMARY` (env): `gpu` (default) = Kaggle first, fallback second; `fallback` = skip GPU discovery entirely (dev without spending Kaggle hours). Routing lives in `app/llm/client.py::route()`; `/health` shows `llm: {primary, active}`.
+
+**Sensitive inputs** (document images, screen frames) prefer the GPU. If only the fallback is available they still go to it, but `route(sensitive=True)` returns `audit=True` and the caller MUST write `audit_events(action='llm.sensitive_fallback', payload={provider:'fallback', kind})`. The image/frame itself never goes in the payload (guardrail 7).
+
 Circuit breaker per provider: 3 consecutive failures → skip for 60 s. `/health` reports each provider's state, and the UI shows a small status dot.
 
 ## Data flow: one voice turn

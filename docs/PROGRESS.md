@@ -43,3 +43,22 @@
 - `/auth/callback` always lands on `/onboarding`, even for returning users. Skipping onboarding needs `GET /api/me` (M2).
 - Avatar states other than `idle` are not built yet; they come with voice.
 - In the dev overlay, the `<body>` hydration warning is the same browser-extension attribute as in M0.
+
+## 2026-10-02 · LLM_PRIMARY switch (ahead of M2)
+**What changed**
+- `config.py`: new `llm_primary: "gpu" | "fallback"` (env `LLM_PRIMARY`, default `gpu`; a blank value falls back to the default, an invalid one fails at boot). It's in `.env.example` and in `render.yaml` (`value: gpu`).
+- `app/llm/client.py`:
+  - `gpu_url()` returns None in fallback mode without doing any discovery. In gpu mode it only uses `GPU_URL_OVERRIDE` until M2 adds the Supabase discovery and the breaker.
+  - `route(sensitive=)` returns `Route(provider, audit)`. `audit=True` means a sensitive input went to the fallback, so the caller has to log it (see ARCHITECTURE "Fallback chains").
+- `/health` returns `llm: {primary, active}`, where active is `gpu`, `fallback` or `none`.
+- **Secret moved:** the Groq keys had been pasted into the tracked `backend/.env.example`, in the uncommitted diff. They were never committed. They're now in the gitignored `backend/.env`, and the example has a blank value.
+
+**How verified**
+- pytest: 12 passed. Routing table, fallback mode skips the GPU even when it's up, sensitive audit flag, env parsing, and the `/health` llm field.
+- ruff check and ruff format are clean.
+- Local `uvicorn` with `LLM_PRIMARY=fallback` → `{"status":"ok","version":"0.1.0","llm":{"primary":"fallback","active":"fallback"}}`.
+
+**Open issues**
+- The audit write itself lands in M2, which adds the Supabase repositories. That's now part of M2's acceptance criteria.
+- `FALLBACK_LLM_API_KEY` holds 3 comma-separated keys, but nothing splits or rotates them yet. Decide in M2: rotate on 429, or use the first key only.
+- `FALLBACK_LLM_MODEL` is still a placeholder in `backend/.env`.

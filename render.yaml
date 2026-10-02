@@ -27,6 +27,8 @@ services:
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
+      - key: LLM_PRIMARY
+        value: gpu
       - key: GATEWAY_TOKEN
         sync: false
       - key: GPU_WORKER_NAME

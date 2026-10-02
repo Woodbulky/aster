@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # supabase (secret key: backend only)
     supabase_url: str = ""
     supabase_secret_key: str = ""
+
+    # LLM routing: "gpu" = Kaggle gateway first, fallback second; "fallback" = skip GPU discovery
+    llm_primary: Literal["gpu", "fallback"] = "gpu"
 
     # GPU worker
     gateway_token: str = ""

@@ -5,7 +5,7 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 ## REST (`/api`)
 | Method | Path | Body → Result |
 |---|---|---|
-| GET | `/health` | provider states (gpu, llm_fallback, sarvam, bhashini, tavily), version |
+| GET | `/health` | provider states (gpu, llm_fallback, sarvam, bhashini, tavily), version, `llm: {primary: gpu|fallback, active: gpu|fallback|none}` |
 | GET | `/api/me` | profile (masked) + assistant settings |
 | POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → saves confirmed values (+ audit) |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |

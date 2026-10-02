@@ -1,13 +1,36 @@
 from fastapi.testclient import TestClient
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.main import VERSION, app
 
 
-def test_health() -> None:
-    r = TestClient(app).get("/health")
+def _health(**env: str) -> dict:
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, **env)
+    try:
+        r = TestClient(app).get("/health")
+    finally:
+        app.dependency_overrides.clear()
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "version": VERSION}
+    return r.json()
+
+
+def test_health() -> None:
+    assert _health() == {
+        "status": "ok",
+        "version": VERSION,
+        "llm": {"primary": "gpu", "active": "none"},
+    }
+
+
+def test_health_shows_active_provider() -> None:
+    fb = {"fallback_llm_base_url": "https://fb.example/v1", "fallback_llm_api_key": "k"}
+    assert _health(**fb)["llm"] == {"primary": "gpu", "active": "fallback"}
+    gpu = {**fb, "gpu_url_override": "https://gpu.example"}
+    assert _health(**gpu)["llm"] == {"primary": "gpu", "active": "gpu"}
+    assert _health(**gpu, llm_primary="fallback")["llm"] == {
+        "primary": "fallback",
+        "active": "fallback",
+    }
 
 
 def test_allowed_origins_comma_separated(monkeypatch) -> None:

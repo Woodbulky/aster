@@ -30,7 +30,7 @@ Tick the box when its acceptance criteria are verified.
 ## M2 — Backend core
 **Read:** ARCHITECTURE.md, API.md
 **Build:** JWT verification dependency (`supabase.auth.get_user`); repositories for sessions/messages/profile; `app/llm/client.py` (OpenAI-compatible, streaming + tools + images; resolves the GPU URL from `gpu_endpoints` with a 30 s cache; falls back to `FALLBACK_LLM_*`; circuit breaker); `/health` with provider states; `PUT /api/assistant`, `GET /api/me`, `POST /api/sessions`; CORS from env.
-**Accept:** With the Kaggle notebook running, `/health` shows `gpu: up` and a test script streams a Marathi reply through the gateway; with the notebook stopped, the same script uses the fallback within 8 s. Unit tests cover the breaker and URL discovery.
+**Accept:** With the Kaggle notebook running, `/health` shows `gpu: up` and a test script streams a Marathi reply through the gateway; with the notebook stopped, the same script uses the fallback within 8 s. Unit tests cover the breaker and URL discovery. `LLM_PRIMARY=fallback` never queries `gpu_endpoints` (test). A sensitive (image) call served by the fallback writes an `llm.sensitive_fallback` audit event with no image content (test). (Routing policy + `/health` `llm` field already exist from the LLM_PRIMARY change; M2 wires discovery + breaker into `gpu_url()`.)
 
 ## M3 — Text agent
 **Read:** AGENT.md, API.md
