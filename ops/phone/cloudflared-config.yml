@@ -1,0 +1,7 @@
+# Copy to ~/.cloudflared/config.yml (in Termux) and fill the placeholders.
+tunnel: <TUNNEL_UUID>
+credentials-file: /data/data/com.termux/files/home/.cloudflared/<TUNNEL_UUID>.json
+ingress:
+  - hostname: api.<yourdomain>
+    service: http://127.0.0.1:8000
+  - service: http_status:404

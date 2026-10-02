@@ -1,0 +1,41 @@
+{
+  "scheme_key": "mahadbt.<slug>",
+  "portal": "mahadbt",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": "<e.g. 2026-27>",
+  "name": { "en": "", "mr": "", "hi": "" },
+  "department": "",
+  "official_urls": ["https://mahadbt.maharashtra.gov.in/..."],
+  "summary": { "en": "", "mr": "", "hi": "" },
+  "criteria": [
+    {
+      "id": "EXAMPLE_domicile",
+      "text": { "en": "EXAMPLE — replace from source", "mr": "", "hi": "" },
+      "logic": { "==": [{ "var": "profile.domicile_state" }, "Maharashtra"] },
+      "ask_if_unknown": { "field_key": "domicile_state" },
+      "source": { "url": "", "quote": "" }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": { "en": "EXAMPLE — replace from source", "mr": "", "hi": "" },
+      "validity_note": { "en": "", "mr": "", "hi": "" },
+      "source": { "url": "", "quote": "" }
+    }
+  ],
+  "computed_facts": {
+    "required_income_fy": { "value": null, "source": { "url": "", "quote": "" } }
+  },
+  "portal_field_map": [
+    { "screen": "Personal Information", "portal_label": "Annual Family Income", "field_key": "annual_family_income" }
+  ],
+  "deadlines": [
+    { "label": { "en": "", "mr": "" }, "date": null, "source": { "url": "", "quote": "" } }
+  ],
+  "notes": []
+}
