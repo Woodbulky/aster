@@ -1,15 +1,19 @@
-# Render Blueprint: backend only (web/ deploys to Vercel).
-# Python 3.12 is pinned by backend/.python-version; uv is used because backend/uv.lock exists.
-# sync:false values are prompted only on first Blueprint creation; add new keys in the dashboard later.
+# Backend only (web/ deploys to Vercel).
+# The live service (https://aster-jj5b.onrender.com) was created MANUALLY in the Render dashboard,
+# not from this Blueprint, so edits here do not change it. This file mirrors its settings
+# so the service can be recreated via New → Blueprint if needed.
+# Python 3.12 is pinned by backend/.python-version. Dependencies come from backend/uv.lock
+# (exported to requirements.txt at build time). sync:false values are prompted only on first
+# Blueprint creation; add new keys in the dashboard later.
 services:
   - type: web
-    name: aster-backend
+    name: aster
     runtime: python
     rootDir: backend
     region: singapore
     plan: free
-    buildCommand: uv sync --frozen --no-dev
-    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install uv && uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:

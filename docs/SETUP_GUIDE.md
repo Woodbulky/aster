@@ -2,7 +2,7 @@
 
 **Order:** accounts → repo + Claude Code → Supabase (+ MCP) → Kaggle GPU → (optional) phone backup → build with Claude Code → backend on Render → Vercel → demo day.
 
-Why this order: Supabase must exist before the GPU worker can register its URL. The GPU is the riskiest piece, so prove it on day 1. You develop the backend on your laptop; Render deploys it from `main` (render.yaml). The phone is only an optional backup host.
+Why this order: Supabase must exist before the GPU worker can register its URL. The GPU is the riskiest piece, so prove it on day 1. You develop the backend on your laptop; Render deploys it from `main` (a manual web service; `render.yaml` mirrors its settings). The phone is only an optional backup host.
 
 ---
 
@@ -250,11 +250,17 @@ Approve the plan, let it build, check the evidence, commit, then `/milestone M1`
 - Before M2, start the Kaggle notebook. Before M4, have the Sarvam/Bhashini keys. Before M5, have Tavily, and the team must verify the knowledge packs (Claude Code will stop and ask).
 - If Claude Code drifts from the specs, say: "Re-read CLAUDE.md and docs/<X>.md and fix the deviation."
 
-## Phase 5b — Backend on Render (after M0 adds `render.yaml`)
-1. render.com → **New → Blueprint** → connect GitHub → pick the `aster` repo. Render reads `render.yaml` (service in `backend/`, region singapore, plan free).
-2. Render asks for every env var marked `sync: false` — fill them from `backend/.env.example` (same values as your laptop `.env`). Secrets stay in Render, never in git.
-3. Apply. Wait for the deploy, then check: `curl https://<service>.onrender.com/health` → `{"status":"ok",...}`.
-4. Every push to `main` redeploys automatically.
+## Phase 5b — Backend on Render (after M0)
+Live service: `https://aster-jj5b.onrender.com` (created manually, not via Blueprint).
+1. render.com → **New → Web Service** → connect GitHub → pick the `aster` repo, branch `main`.
+2. Settings: Language **Python 3**, Root Directory `backend`, Region **Singapore**, Instance type **Free**.
+   - Build command: `pip install uv && uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt && pip install -r requirements.txt`
+   - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - Health check path: `/health`. Auto-Deploy: **On Commit**.
+   - Python 3.12 comes from `backend/.python-version` (Render's default is 3.14). Check the build log says 3.12.
+3. Environment: add the keys from `backend/.env.example` (same values as your laptop `.env`). Secrets stay in Render, never in git. `/health` needs none of them; blank values fall back to defaults.
+4. Deploy, then check: `curl https://aster-jj5b.onrender.com/health` → `{"status":"ok","version":...}`.
+5. Every push to `main` redeploys automatically. `render.yaml` is a reference copy of these settings (New → Blueprint can recreate the service); editing it does **not** change the live service — change the dashboard and keep `render.yaml` in sync.
 5. ⚠️ The free plan sleeps after ~15 min idle (first request then takes ~1 min). Before judging: set up a keep-warm pinger on `/health` every ~10 min (e.g. a free uptime monitor), or switch to the Starter plan for demo week.
 
 ## Phase 6 — Deploy the web app (after M1, redeploy anytime)

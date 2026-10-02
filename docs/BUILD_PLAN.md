@@ -4,7 +4,7 @@ Run each milestone with `/milestone M<n>` in Claude Code. Do them in order. Each
 Tick the box when its acceptance criteria are verified.
 
 ## Status
-- [ ] M0 Scaffold
+- [x] M0 Scaffold
 - [ ] M1 Supabase schema + auth + onboarding UI
 - [ ] M2 Backend core (auth, LLM client, GPU discovery, health)
 - [ ] M3 Text agent (WS, phases, onboarding + choose_form)

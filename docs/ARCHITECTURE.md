@@ -6,7 +6,7 @@
       ▼                                                         ▼
 [Supabase cloud]  ◀──── service key ────  [Render web service — singapore]  FastAPI backend
  Auth · Postgres · Storage · Realtime        agent orchestrator · speech router · research · verification
- gpu_endpoints / public_endpoints            https://<service>.onrender.com (render.yaml, auto-deploy on push to main)
+ gpu_endpoints / public_endpoints            https://<service>.onrender.com (manual service, auto-deploy on push to main)
                                                         │ Bearer GATEWAY_TOKEN
                                                         ▼
                                          [Kaggle 2×T4 gateway — Cloudflare quick tunnel]

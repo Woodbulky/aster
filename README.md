@@ -11,7 +11,7 @@ A multilingual voice + chat assistant that helps students research, verify, and 
 | `.claude/commands/` | `/milestone`, `/guardrails`, `/status` |
 | `supabase/migrations/0001_init.sql` | Full schema with RLS, storage bucket, audit hash chain, endpoint registration |
 | `gpu/aster_gpu_worker.ipynb` | Kaggle 2×T4 worker (LLM/vision + ASR + OCR behind one authenticated gateway + Cloudflare tunnel) |
-| `render.yaml` | Render Blueprint for the backend (web goes to Vercel) |
+| `render.yaml` | Reference copy of the Render backend service settings (live service was created manually; web goes to Vercel) |
 | `ops/phone/` | Optional backup: Termux scripts to run the backend + tunnel on the phone |
 | `knowledge/` | Verified scheme packs (template inside) |
 | `backend/`, `web/` | Built by Claude Code from M0 (env examples included) |
@@ -28,4 +28,4 @@ cd web && cp .env.local.example .env.local && pnpm install
 pnpm dev
 pnpm lint && pnpm typecheck && pnpm build
 ```
-Deploy: push to `main` → Render redeploys the backend from `render.yaml`.
+Deploy: push to `main` → Render redeploys the backend (`https://aster-jj5b.onrender.com`); setup in `docs/SETUP_GUIDE.md` Phase 5b.
