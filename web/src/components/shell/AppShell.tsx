@@ -8,7 +8,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from "
 import { AsterMark, Avatar } from "@/components/avatar/Avatar";
 import { ProfileSetup } from "@/components/profile/ProfileSetup";
 import { completion } from "@/components/profile/ProfileForm";
-import { type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
+import { loadMe, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    loadMe().catch(console.error); // local choices win; this only fills an empty cache
     createClient()
       .auth.getUser()
       .then(({ data }) => {

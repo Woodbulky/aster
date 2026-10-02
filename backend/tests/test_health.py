@@ -19,11 +19,34 @@ def test_health() -> None:
         "status": "ok",
         "version": VERSION,
         "llm": {"primary": "gpu", "active": "none"},
+        "providers": {
+            "gpu": "down",
+            "llm_fallback": "missing",
+            "sarvam": "missing",
+            "bhashini": "missing",
+            "tavily": "missing",
+        },
     }
 
 
+def test_health_provider_states() -> None:
+    p = _health(gpu_url_override="https://gpu.example", sarvam_api_key="x", tavily_api_key="y")
+    assert p["providers"] == {
+        "gpu": "up",
+        "llm_fallback": "missing",
+        "sarvam": "configured",
+        "bhashini": "missing",
+        "tavily": "configured",
+    }
+    assert _health(llm_primary="fallback")["providers"]["gpu"] == "off"
+
+
 def test_health_shows_active_provider() -> None:
-    fb = {"fallback_llm_base_url": "https://fb.example/v1", "fallback_llm_api_key": "k"}
+    fb = {
+        "fallback_llm_base_url": "https://fb.example/v1",
+        "fallback_llm_api_key": "k",
+        "fallback_llm_model": "m",
+    }
     assert _health(**fb)["llm"] == {"primary": "gpu", "active": "fallback"}
     gpu = {**fb, "gpu_url_override": "https://gpu.example"}
     assert _health(**gpu)["llm"] == {"primary": "gpu", "active": "gpu"}

@@ -80,3 +80,36 @@
 - `assistant_settings.language` DB default is still `'mr'`; the UI defaults to `en`. Needs a migration if the DB should match.
 - Phone width was not checked in a real viewport (layout is responsive: drawer sidebar under `lg`).
 
+
+## 2026-10-03 · M2 Backend core (⏳ GPU-up check pending)
+**What changed**
+- Deps: `supabase` 2.32, `httpx` 0.28 (both in the fixed stack).
+- `app/db/supabase.py`: a service-key client (`get_db`, singleton) plus repos for profile, assistant, sessions, messages and audit. Each one takes the JWT `user_id` and filters by it.
+- `app/deps.py`: `current_user` checks the Bearer token with `supabase.auth.get_user` and returns 401 on a missing or bad token.
+- `app/llm/client.py`:
+  - GPU discovery from `gpu_endpoints` (fresh if `last_seen` < `GPU_STALE_SECONDS`), cached for 30 s. Errors return `None`. `GPU_URL_OVERRIDE` wins. In `LLM_PRIMARY=fallback` no query is made.
+  - A `Breaker` per provider (3 failures → 60 s open, then half-open).
+  - `chat_stream()`: an OpenAI-compatible SSE stream that handles tools and images (base64 `image_url`). Time to first token is capped at 8 s, or 20 s for vision. A failure before the first token goes to the next provider and also clears the discovery cache. Fallback keys rotate on a 429.
+  - Image input requires `sensitive_kind` + `user_id`. When the fallback serves such a call, it writes `audit_events(llm.sensitive_fallback, {provider, kind})` **before** sending (fail-closed).
+  - Base64 runs in provider error bodies are redacted before logging (guardrail 7).
+- REST: `GET /api/me`, `PUT /api/assistant`, `PUT /api/profile` (user-typed values, source `manual`; `extra=forbid`; Aadhaar last-4 only), `POST /api/sessions`. `/health` gains `providers`.
+- `scripts/llm_smoke.py`: streams a Marathi reply and prints the provider and timings.
+- Web: `lib/api.ts` calls the backend with the Supabase access token, after a local cache write so the UI never waits on a sleeping Render. `loadMe()` fills an empty cache from `/api/me` and never overwrites earlier local choices. The profile page and the setup pop-up show save errors.
+- Env: `SUPABASE_URL` and `FALLBACK_LLM_MODEL=qwen/qwen3.8-27b` (Groq's current vision model per console.groq.com/docs/vision, checked 2026-10-03) set in `backend/.env`. Fixed the duplicated key in `web/.env.local` (`NEXT_PUBLIC_API_URL=NEXT_PUBLIC_API_URL=…`).
+- `docs/API.md`: `/health` shape + `PUT /api/profile`.
+
+**How verified**
+- pytest: 49 passed. Covers the breaker, discovery (fresh/stale/missing/error/30 s cache/override), fallback mode never querying `gpu_endpoints` (route, stream, `/health`), GPU connect error and slow first token → fallback, 429 key rotation, the sensitive audit having no image content, redaction, JWT 401s on every route, user scoping, and payload validation. ruff check and ruff format are clean. Web: lint, typecheck, test and build pass.
+- Live smoke test (Groq): Marathi streamed with `provider=fallback first_token=1.03s`. With a dead tunnel URL as the GPU: fallback at 2.05 s. With an unroutable GPU host: fallback at 5.75 s (both < 8 s).
+- Live `/health` (gpu mode, stale row 6 min old): `gpu: down, llm_fallback: up, sarvam: configured, tavily: configured`. The service-key discovery query returns the `kaggle-main` row.
+- Live: `/api/me` returns 401 with no token and 401 with a forged JWT (rejected by Supabase Auth). The CORS preflight from `localhost:3000` → ACAO echoed.
+- Advisors: unchanged from M1 (accepted items only).
+
+**Open issues**
+- **Pending (user):** start the Kaggle notebook, then confirm `/health` shows `gpu: up` and the smoke test reports `provider=gpu`. Stop it and rerun → `provider=fallback` < 8 s. Then tick M2.
+- **Pending (user):** browser click-through against the local backend (a second dev server can't run alongside the one on :3000).
+- Render env: add `SUPABASE_SECRET_KEY`, `GATEWAY_TOKEN`, `FALLBACK_LLM_*`, `SARVAM_API_KEY`, `TAVILY_API_KEY` in the dashboard before pushing. Until then the live `/api/*` calls return 500.
+- Groq rate limits are per **organization**: rotating keys only helps if they are from different orgs.
+- `update_profile` writes the values, then the sources: two calls, not atomic. Move both into one RPC if it ever matters.
+- `assistant_settings.language` DB default is still `'mr'` (the UI default is `en`), so a never-saved user on a new device gets `mr` via `loadMe`.
+- `NEXT_PUBLIC_API_URL` empty → `public_endpoints` discovery is not built (phone backup only).

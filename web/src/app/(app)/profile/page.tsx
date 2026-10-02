@@ -70,7 +70,14 @@ function Summary({ profile, email, fallbackName }: { profile: ProfileDraft; emai
   );
 }
 
-function SavedNote({ show }: { show: boolean }) {
+/** `true` = saved, a string = the save error. */
+function SavedNote({ show }: { show: boolean | string }) {
+  if (typeof show === "string")
+    return (
+      <span role="alert" className="text-sm text-destructive">
+        {show}
+      </span>
+    );
   return show ? (
     <span role="status" className="flex items-center gap-1.5 text-sm text-primary">
       <Check className="size-4" /> Saved
@@ -80,13 +87,17 @@ function SavedNote({ show }: { show: boolean }) {
 
 function ProfileEditor({ initial }: { initial: ProfileDraft }) {
   const [draft, setDraft] = useState(initial);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<boolean | string>(false);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        await putProfile(draft);
-        setSaved(true);
+        try {
+          await putProfile(draft);
+          setSaved(true);
+        } catch (err) {
+          setSaved((err as Error).message);
+        }
       }}
       className="flex flex-col gap-6"
     >
@@ -116,7 +127,7 @@ function ProfileEditor({ initial }: { initial: ProfileDraft }) {
 
 function CompanionEditor({ initial }: { initial: AssistantSettings }) {
   const [value, setValue] = useState(initial);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<boolean | string>(false);
   return (
     <section id="companion" className="card scroll-mt-6 p-6 sm:p-8">
       <h2 className="text-lg font-bold">Your companion</h2>
@@ -134,8 +145,12 @@ function CompanionEditor({ initial }: { initial: AssistantSettings }) {
           type="button"
           className="btn-primary"
           onClick={async () => {
-            await putAssistant({ ...value, assistant_name: value.assistant_name.trim() || "Aster" });
-            setSaved(true);
+            try {
+              await putAssistant({ ...value, assistant_name: value.assistant_name.trim() || "Aster" });
+              setSaved(true);
+            } catch (err) {
+              setSaved((err as Error).message);
+            }
           }}
         >
           <Save className="size-4" /> Save companion

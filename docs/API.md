@@ -5,10 +5,11 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 ## REST (`/api`)
 | Method | Path | Body → Result |
 |---|---|---|
-| GET | `/health` | provider states (gpu, llm_fallback, sarvam, bhashini, tavily), version, `llm: {primary: gpu|fallback, active: gpu|fallback|none}` |
+| GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam/bhashini/tavily: configured\|missing}`, version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
 | GET | `/api/me` | profile (masked) + assistant settings |
 | POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → saves confirmed values (+ audit) |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |
+| PUT | `/api/profile` | profile form values typed by the user (`profiles` columns, `""` = not provided; unknown keys → 422; `aadhaar_last4` only) → saved with `profile_field_sources.source_type='manual'`. Conversation-derived values still go through proposals (`/api/profile/confirm`). |
 | POST | `/api/sessions` | `{portal?, scheme_key?, portal_url?}` → session |
 | GET | `/api/sessions/{id}` | phase, fields, flags, docs, research |
 | POST | `/api/sessions/{id}/documents` | `{document_id, doc_type?}` after a client Storage upload → starts the pipeline |

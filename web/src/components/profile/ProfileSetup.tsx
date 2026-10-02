@@ -32,15 +32,22 @@ export function ProfileSetup({
   const [step, setStep] = useState(startAt);
   const [draft, setDraft] = useState(profile);
   const [companion, setCompanion] = useState(assistant);
+  const [error, setError] = useState<string | null>(null);
   const current = STEPS[step];
   const last = step === STEPS.length - 1;
 
   async function next(e: React.FormEvent) {
     e.preventDefault();
-    await putProfile(draft);
-    if (current.id === "companion") {
-      await putAssistant({ ...companion, assistant_name: companion.assistant_name.trim() || "Aster" });
+    try {
+      await putProfile(draft);
+      if (current.id === "companion") {
+        await putAssistant({ ...companion, assistant_name: companion.assistant_name.trim() || "Aster" });
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      return;
     }
+    setError(null);
     if (last) onClose();
     else setStep(step + 1);
   }
@@ -92,6 +99,11 @@ export function ProfileSetup({
             </button>
           )}
           <div className="flex items-center gap-2">
+            {error && (
+              <span role="alert" className="text-sm text-destructive">
+                {error}
+              </span>
+            )}
             {!last && current.id !== "about" && (
               <button type="button" onClick={() => setStep(step + 1)} className="btn-ghost hidden sm:inline-flex">
                 Skip

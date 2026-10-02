@@ -4,7 +4,11 @@ from pydantic import ValidationError
 from app.config import Settings
 from app.llm.client import Route, gpu_url, route
 
-FB = {"fallback_llm_base_url": "https://fb.example/v1", "fallback_llm_api_key": "k"}
+FB = {
+    "fallback_llm_base_url": "https://fb.example/v1",
+    "fallback_llm_api_key": "k",
+    "fallback_llm_model": "m",
+}
 GPU = {"gpu_url_override": "https://gpu.example"}
 
 

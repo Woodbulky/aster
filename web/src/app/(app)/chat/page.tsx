@@ -78,7 +78,7 @@ export default function ChatPage() {
                 key={l.id}
                 lang={l.id}
                 aria-pressed={lang === l.id}
-                onClick={() => putAssistant({ ...assistant, language: l.id })}
+                onClick={() => putAssistant({ ...assistant, language: l.id }).catch(console.error)}
                 className={cn(
                   "h-9 rounded-lg px-3 text-sm font-medium transition-colors",
                   lang === l.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
