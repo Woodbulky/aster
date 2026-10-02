@@ -5,26 +5,30 @@ import { useEffect, useId, useState } from "react";
 
 type AvatarSpec = {
   name: string;
-  body: string;
-  glow: string;
-  eye: { rx: number; ry: number };
+  tagline: string;
+  light: string;
+  mid: string;
+  dark: string;
+  eye: string;
+  eyeShape: { rx: number; ry: number };
   cheeks?: boolean;
 };
 
 export const AVATARS = {
-  aster: { name: "Aster", body: "#0f766e", glow: "#5eead4", eye: { rx: 6, ry: 8 } },
-  mitra: { name: "Mitra", body: "#f28c28", glow: "#fed7aa", eye: { rx: 5, ry: 10 } },
-  tara: { name: "Tara", body: "#4338ca", glow: "#c7d2fe", eye: { rx: 8, ry: 6 } },
-  chintu: { name: "Chintu", body: "#15803d", glow: "#bbf7d0", eye: { rx: 4.5, ry: 5.5 }, cheeks: true },
+  aster: { name: "Aster", tagline: "The gentle guide", light: "#d9edb3", mid: "#95b975", dark: "#528557", eye: "#31492d", eyeShape: { rx: 4.2, ry: 6 } },
+  mitra: { name: "Mitra", tagline: "The curious friend", light: "#ffd6ac", mid: "#eda574", dark: "#c87552", eye: "#6d4431", eyeShape: { rx: 4, ry: 6.8 }, cheeks: true },
+  tara: { name: "Tara", tagline: "The clear thinker", light: "#e1d8ff", mid: "#b4a1dc", dark: "#8070b6", eye: "#4f426f", eyeShape: { rx: 5, ry: 4.4 } },
+  chintu: { name: "Chintu", tagline: "The happy helper", light: "#fff0b7", mid: "#e3ca76", dark: "#c1a555", eye: "#6d5d2f", eyeShape: { rx: 4.6, ry: 5.4 }, cheeks: true },
 } satisfies Record<string, AvatarSpec>;
 export type AvatarId = keyof typeof AVATARS;
 export const AVATAR_IDS = Object.keys(AVATARS) as AvatarId[];
+export const isAvatarId = (v: unknown): v is AvatarId => AVATAR_IDS.includes(v as AvatarId);
 
 const center = { transformBox: "fill-box", transformOrigin: "center" } as const;
 
-/** Orb-with-eyes avatar. Idle state only for now: slow breathe + a blink every 3–6 s. */
-export function Avatar({ id, size = 128 }: { id: AvatarId; size?: number }) {
-  const spec: AvatarSpec = AVATARS[id];
+/** Soft orb with a face. Idle state: slow breathe + a blink every 3–6 s. Other states arrive with voice (M4). */
+export function Avatar({ id, size = 128 }: { id: string; size?: number }) {
+  const spec: AvatarSpec = AVATARS[isAvatarId(id) ? id : "aster"];
   const reduce = useReducedMotion();
   const gid = useId();
   const [blink, setBlink] = useState(false);
@@ -45,41 +49,51 @@ export function Avatar({ id, size = 128 }: { id: AvatarId; size?: number }) {
     return () => window.clearTimeout(timer);
   }, [reduce]);
 
-  const loop = { duration: 4, repeat: Infinity, ease: "easeInOut" } as const;
+  const loop = { duration: 5, repeat: Infinity, ease: "easeInOut" } as const;
 
   return (
-    <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={spec.name}>
+    <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={spec.name} className="shrink-0 overflow-visible">
       <defs>
-        <radialGradient id={gid} cx="35%" cy="30%" r="75%">
-          <stop offset="0%" stopColor={spec.glow} />
-          <stop offset="45%" stopColor={spec.body} />
-          <stop offset="100%" stopColor={spec.body} stopOpacity={0.9} />
+        <radialGradient id={`${gid}b`} cx="30%" cy="24%" r="85%">
+          <stop offset="0%" stopColor={spec.light} />
+          <stop offset="50%" stopColor={spec.mid} />
+          <stop offset="100%" stopColor={spec.dark} />
+        </radialGradient>
+        <radialGradient id={`${gid}h`}>
+          <stop offset="0%" stopColor={spec.mid} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={spec.mid} stopOpacity={0} />
         </radialGradient>
       </defs>
-      <motion.circle
-        cx={60}
-        cy={60}
-        r={54}
-        fill={spec.glow}
-        style={center}
-        animate={reduce ? undefined : { opacity: [0.35, 0.6, 0.35], scale: [0.96, 1.02, 0.96] }}
-        transition={loop}
-        opacity={0.45}
-      />
-      <motion.g style={center} animate={reduce ? undefined : { scale: [1, 1.04, 1], y: [0, -2, 0] }} transition={loop}>
-        <circle cx={60} cy={60} r={44} fill={`url(#${gid})`} />
+      <circle cx={60} cy={64} r={58} fill={`url(#${gid}h)`} />
+      <motion.g style={center} animate={reduce ? undefined : { scale: [1, 1.035, 1], y: [0, -1.5, 0] }} transition={loop}>
+        <ellipse cx={60} cy={60} rx={47} ry={46} fill={`url(#${gid}b)`} />
+        <ellipse cx={42} cy={34} rx={13} ry={7} fill="#fff" opacity={0.18} transform="rotate(-30 42 34)" />
         <motion.g style={center} animate={{ scaleY: blink ? 0.1 : 1 }} transition={{ duration: 0.07 }}>
-          {[44, 76].map((cx) => (
+          {[49, 71].map((cx) => (
             <g key={cx}>
-              <ellipse cx={cx} cy={56} rx={spec.eye.rx} ry={spec.eye.ry} fill="#fbf8f3" />
-              <circle cx={cx + 1} cy={57} r={Math.min(spec.eye.rx, spec.eye.ry) * 0.5} fill="#14213d" />
+              <ellipse cx={cx} cy={58} rx={spec.eyeShape.rx} ry={spec.eyeShape.ry} fill={spec.eye} />
+              <circle cx={cx + 1.4} cy={55.5} r={1.3} fill="#fffbea" opacity={0.75} />
             </g>
           ))}
         </motion.g>
         {spec.cheeks &&
-          [34, 86].map((cx) => <circle key={cx} cx={cx} cy={70} r={6} fill="#fda4af" opacity={0.6} />)}
-        <path d="M52 76 Q60 82 68 76" stroke="#fbf8f3" strokeWidth={3} strokeLinecap="round" fill="none" />
+          [38, 82].map((cx) => <ellipse key={cx} cx={cx} cy={70} rx={5.5} ry={3} fill="#f6a99b" opacity={0.45} />)}
+        <path d="M55 73 Q60 77.5 65 73" stroke={spec.eye} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.7} />
       </motion.g>
+    </svg>
+  );
+}
+
+/** Six-petal brand mark (from the design reference). */
+export function AsterMark({ size = 28, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" className={className}>
+      <g fill="currentColor">
+        {[0, 60, 120].map((r) => (
+          <ellipse key={r} cx="20" cy="20" rx="5.4" ry="18" transform={`rotate(${r} 20 20)`} />
+        ))}
+      </g>
+      <circle cx="20" cy="20" r="3.5" fill="var(--background)" />
     </svg>
   );
 }

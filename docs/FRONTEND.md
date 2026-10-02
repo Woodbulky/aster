@@ -3,11 +3,13 @@
 ## Routes (`web/src/app`)
 | Route | Purpose |
 |---|---|
-| `/login` | Google + email sign-in (Supabase). Language toggle mr/hi/en |
-| `/onboarding` | Avatar picker (4 avatars), assistant name (default "Aster"), language → then opens a chat session in the `onboarding` phase |
-| `/chat/[sessionId]` | Main conversation: avatar stage (top, ~40% height on mobile), message list with cards, composer (text + mic + push-to-talk) |
+| `/` | Public landing page (hero, how it works, features, guardrails) |
+| `/login` | Google + email magic link (one flow for sign-up and sign-in). UI is English |
+| `/home` | Workspace overview. First visit opens the **profile setup pop-up**: About you → Home & category → Education → General documents → Companion (avatar, name, reply language) |
+| `/chat` | Conversation UI: avatar welcome, prompt cards, message list, composer (text + mic), reply-language toggle, context panel. Becomes `/chat/[sessionId]` with M3 |
+| `/documents` | General documents vault (10th/12th marksheets, domicile, income, caste, caste validity) → Supabase Storage `documents/<uid>/general/<doc_type>/<ts>.<ext>` |
+| `/profile` | View/edit the profile (fields = `profiles` columns) and companion settings |
 | `/fill/[sessionId]` | Desktop guided filling: share-screen button, PiP launcher, field list with copy buttons |
-| `/profile` | View/edit the confirmed profile, the source of each value, consent toggles, delete my data |
 | `/sessions` | Past form sessions |
 
 ## Avatar (`components/avatar/`)
@@ -27,4 +29,4 @@ Each card's actions call REST endpoints. The result is posted back into the conv
 - i18n: `src/lib/i18n/{en,hi,mr}.json` with a tiny `t()` helper. UI strings only; agent text comes from the backend.
 
 ## Design direction
-Warm, trustworthy, Indian-public-service friendly — not "AI purple". Off-white background, deep navy text, teal + saffron accents (match the Aster brand), large tap targets (≥ 48 px), body ≥ 16 px, a Devanagari-capable font (Noto Sans + Noto Sans Devanagari, or Mukta). Mobile-first. Accessible: labels, focus rings, captions for every spoken message.
+Warm, calm, trustworthy — not "AI purple". Follows the `chatgpt/` reference: off-white `#fafbf8`, deep green ink/primary (`#273d33` / `#2c5743`), soft sage / peach / lavender / butter tiles, soft orb avatars, Manrope headings + DM Sans body + Noto Sans Devanagari fallback. Shared utilities in `globals.css`: `btn-primary`, `btn-subtle`, `btn-ghost`, `card`, `field`, `eyebrow`, `chip`. UI copy is English; the assistant replies in en/hi/mr (`assistant_settings.language`). Large tap targets (≥ 48 px), body ≥ 16 px. Mobile-first. Accessible: labels, focus rings, captions for every spoken message.

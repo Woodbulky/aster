@@ -7,9 +7,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-noto-sans), var(--font-noto-deva), sans-serif;
-  --font-heading: var(--font-noto-sans), var(--font-noto-deva), sans-serif;
-  --color-saffron: var(--saffron);
+  --font-sans: var(--font-dm-sans), var(--font-noto-deva), sans-serif;
+  --font-heading: var(--font-manrope), var(--font-noto-deva), sans-serif;
+  --color-sage: var(--sage);
+  --color-peach: var(--peach);
+  --color-lavender: var(--lavender);
+  --color-butter: var(--butter);
+  --color-ink: var(--foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,50 +53,95 @@
 }
 
 :root {
-  --background: #fbf8f3;
-  --foreground: #14213d;
+  --background: #fafbf8;
+  --foreground: #273d33;
   --card: #ffffff;
-  --card-foreground: #14213d;
+  --card-foreground: #273d33;
   --popover: #ffffff;
-  --popover-foreground: #14213d;
-  --primary: #0f766e;
+  --popover-foreground: #273d33;
+  --primary: #2c5743;
   --primary-foreground: #ffffff;
-  --secondary: #f1ece3;
-  --secondary-foreground: #14213d;
-  --muted: #f1ece3;
-  --muted-foreground: #4a5568;
-  --accent: #ffe7c7;
-  --accent-foreground: #14213d;
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: #e4ddd0;
-  --input: #e4ddd0;
-  --ring: #0f766e;
+  --secondary: #f4f5ef;
+  --secondary-foreground: #273d33;
+  --muted: #f4f5ef;
+  --muted-foreground: #646d61;
+  --accent: #eaf0e2;
+  --accent-foreground: #273d33;
+  --destructive: #b42318;
+  --border: #e8ebe3;
+  --input: #dfe3d8;
+  --ring: #50755c;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --saffron: #f28c28;
+  --radius: 0.875rem;
+  --sidebar: #f4f5ef;
+  --sidebar-foreground: #273d33;
+  --sidebar-primary: #2c5743;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6ecdc;
+  --sidebar-accent-foreground: #273d33;
+  --sidebar-border: #e8ebe3;
+  --sidebar-ring: #50755c;
+  --sage: #eaf0e2;
+  --peach: #fbecdf;
+  --lavender: #eeebf8;
+  --butter: #f7f1d9;
 }
 
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+  @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+  @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+  @apply font-sans;
   }
+}
+
+@layer base {
+  h1, h2, h3, h4 {
+  @apply font-heading tracking-tight;
+  }
+  ::selection {
+    background: #dbe7c7;
+  }
+}
+
+/* Shared building blocks for the reference-style UI. */
+@utility btn {
+  @apply inline-flex h-12 items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-primary text-primary-foreground hover:bg-[#1c4130];
+}
+
+@utility btn-subtle {
+  @apply btn border border-border bg-card hover:bg-muted;
+}
+
+@utility btn-ghost {
+  @apply btn px-3 font-medium text-muted-foreground hover:bg-muted hover:text-foreground;
+}
+
+@utility card {
+  @apply rounded-2xl border border-border bg-card shadow-[0_6px_25px_#283b2d08];
+}
+
+@utility eyebrow {
+  @apply text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase;
+}
+
+@utility field {
+  @apply h-12 w-full rounded-xl border border-input bg-card px-3.5 text-base placeholder:text-[#8a9387] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
 }

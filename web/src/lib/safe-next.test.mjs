@@ -7,7 +7,7 @@ test("safeNext allows relative paths, rejects open redirects", () => {
   assert.equal(safeNext("/chat/abc?x=1"), "/chat/abc?x=1");
   const bad = [null, "", "onboarding", "https://evil.com", "//evil.com", "/\\evil.com", "/\tevil"];
   for (const b of [...bad, "javascript:alert(1)"]) {
-    assert.equal(safeNext(b), "/onboarding", String(b));
+    assert.equal(safeNext(b), "/home", String(b));
   }
 });
 
