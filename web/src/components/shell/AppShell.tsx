@@ -8,7 +8,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from "
 import { AsterMark, Avatar } from "@/components/avatar/Avatar";
 import { ProfileSetup } from "@/components/profile/ProfileSetup";
 import { completion } from "@/components/profile/ProfileForm";
-import { loadMe, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
+import { clearLocalCache, loadMe, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   async function signOut() {
     await createClient().auth.signOut();
+    clearLocalCache();
     router.replace("/");
   }
 

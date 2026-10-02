@@ -115,3 +115,50 @@
 - `update_profile` writes the values, then the sources: two calls, not atomic. Move both into one RPC if it ever matters.
 - `assistant_settings.language` DB default is still `'mr'` (the UI default is `en`), so a never-saved user on a new device gets `mr` via `loadMe`.
 - `NEXT_PUBLIC_API_URL` empty → `public_endpoints` discovery is not built (phone backup only).
+
+## 2026-10-03 · M3 Text agent ✅
+**What changed**
+- No migration: the live schema already had `profile_proposals`, `form_sessions.phase` and `messages.lang/input_mode/tool_*` (checked with SQL).
+- `app/agent/`:
+  - `phases.py`: pure `next_phase()`. Core fields incomplete → `onboarding`; complete with no portal → `choose_form`; portal set → `research`. Forward only. `CORE_FIELDS` is 12 fields (PRODUCT.md); trim it there to shorten the demo.
+  - `tools/`: a registry that refuses tools outside the current phase, in code. Bad args come back as `{ok:false,error}`.
+    - `get_profile` masks caste, religion, mobile and Aadhaar last-4.
+    - `propose_profile_update` validates with `ProfileIn` plus the form's gender/category options; `message_id` comes from the orchestrator.
+    - `explain_why_asked` uses the i18n templates.
+    - `list_supported_forms` and `suggest_schemes` (stub until M5).
+    - `set_form` always stores the official URL from code.
+  - `orchestrator.py`:
+    - Streams replies. Tool calls are assembled by index (Groq sends each one whole in one chunk). At most 6 tool calls per turn, then one final call without tools. The phase is re-synced after each tool round.
+    - CJK characters are stripped from replies. Both LLMs down → the i18n apology.
+    - One corrective nudge when an onboarding reply mentions a card that was never created. Seen live: Groq said "tap Confirm" without calling the tool.
+  - `prompts/`: `system.md`, phase prompts for onboarding, choose_form and research, and `i18n/{en,hi,mr}.json` (the ask/why text for the core fields, plus `llm_unavailable`).
+- `app/ws/`:
+  - `protocol.py` (pydantic models, mirrored in `web/src/lib/ws/protocol.ts`).
+  - `voice.py`, the `/ws/session/{id}` endpoint:
+    - Opening: `hello` with the token → user and session checked; closes with 4400, 4401 or 4404. Aster greets first on a new session.
+    - Limits: 30 messages/min per connection.
+    - Card taps: `form_selected` calls `set_form` in code.
+- REST: `POST /api/profile/confirm`. Kept values are saved with source `text` + `{proposal_id, message_id}`; values the user corrected in the card are saved as `manual`; a blanked field is not saved. The audit has field names only. `PUT /api/profile` now writes only the fields that changed, so the form no longer turns chat-confirmed values into `manual`.
+- `repo.add_message` keeps only the last 4 digits of Aadhaar- and bank-like numbers (12 digits, or 11–18) in message text and tool payloads (guardrail 6). `update_profile` refreshes `confirmed_at` on every upsert.
+- Web:
+  - `/chat` opens the latest active session (read through RLS) or creates one.
+  - `/chat/[sessionId]`: history and pending cards loaded through RLS, the `useSessionSocket` hook (reconnects with backoff), streaming text, the `ConfirmProfileCard` (editable) and `SchemeSuggestionsCard`, the tool label, and Avatar `thinking`/`happy` states.
+- **Privacy fix:** the localStorage profile cache wasn't tied to an account, so a second account on the same browser saw the first one's profile (the "59%" report). It's now cleared when a different user signs in, and on sign-out.
+- **Dev fix:** set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`, not `localhost`. Browsers send every `localhost` cookie, from any port, with the WS handshake. This browser had about 12 KB of Supabase cookies, and uvicorn/websockets hangs without logging when the Cookie header is over 8 KB (reproduced: 4 KB → 101, 9 KB → timeout). The prod domains don't share cookies. Documented in `web/.env.local.example`.
+
+**How verified**
+- pytest **103 passed**: phase table, tools, orchestrator with a fake LLM (card flow, phase refusal, the 6-call cap, apology, CJK, the fake-card nudge), WS (close codes, greeting, card tap → research, rate limit), confirm/reject/edit/foreign-proposal, ID redaction, profile PUT diff. ruff clean. Web lint, typecheck, build and test pass.
+- **Live, real DB** (account harshkasliwaal@…, session `45be1a02…`, GPU then Groq):
+  - A Marathi sentence → card "Aarav Sunil Patil · 2005-05-12 · Male · Pune" → Confirm → `profiles` updated, `profile_field_sources` rows `text` with `{proposal_id, message_id}`, `profile.confirmed` audit.
+  - Category and income went through cards too.
+  - "Mahadbt" → audit `phase.changed onboarding→choose_form`, `form.set mahadbt`, `phase.changed choose_form→research`, and `form_sessions` shows `phase=research, portal=mahadbt`. The GPU was stopped mid-run and Groq took over (`provider=fallback`).
+- **Live, real LLM, in-memory store** (`scratchpad/live_onboard.py`, Groq): Marathi answers for 10th, 12th and course → 2 real cards → Confirm → `choose_form` → "महाडीबीटी" → `research`, all replies in Marathi.
+
+**Open issues**
+- The education fields of the real-DB run went through the profile form, because the faked-card bug hit before the nudge existed. Then the form save turned every source into `manual` (now fixed). A clean single real-DB Marathi run needs an account with empty core fields.
+- Models sometimes say "profile updated" before the tap. Nothing is saved until confirm, but the wording is wrong. The prompt is tightened; watch for it.
+- `/chat/[id]` takes a few seconds to connect after a reload: loading history plus Supabase `getSession` before the socket opens. Profile it with M4.
+- Two tabs on one session run turns at the same time and don't see each other's messages. Fine for now.
+- Message `lang` = the session language from `hello`; the model follows the conversation's language, so a Marathi reply can be stored as `en` after a toggle. M4 STT detection fixes this for voice.
+- The Marathi and Hindi templates and prompt examples were written by Claude and need a native speaker's review.
+- The research phase has no tools until M5: Aster only says research comes next.

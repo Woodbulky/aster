@@ -27,11 +27,11 @@ A `card` is a UI payload sent to the client (see `docs/API.md`). Cards are how t
 | Tool | Args | Returns / effect |
 |---|---|---|
 | `get_profile` | — | Profile with sensitive fields masked (`caste: "provided"`) unless the phase needs them |
-| `propose_profile_update` | `updates: {field_key: value}`, `evidence: "voice"\|"text"`, `message_id` | Card `confirm_profile`. Nothing is saved until the user confirms (REST `POST /profile/confirm`) |
+| `propose_profile_update` | `updates: {field_key: value}`, `evidence: "voice"\|"text"` | Card `confirm_profile`. Nothing is saved until the user confirms (REST `POST /profile/confirm`). `message_id` (the user turn) is set by the orchestrator, never by the LLM. Values are validated like `PUT /api/profile`; gender/category must be the profile form's options |
 | `explain_why_asked` | `field_key` | Template explanation in the user's language + source (pack/GR) |
 | `list_supported_forms` | — | Portals with packs available |
 | `suggest_schemes` | `portal` | Runs `check_eligibility` over all packs → top matches with reasons. Card `scheme_suggestions` |
-| `set_form` | `portal`, `scheme_key?`, `portal_url?` | Updates `form_sessions` |
+| `set_form` | `portal`, `scheme_key?` | Updates `form_sessions`; `portal_url` is always the official URL from code (guardrail 8), `scheme_key` must be a verified pack |
 | `get_knowledge_pack` | `scheme_key` | Pack JSON if `status=verified` |
 | `search_web` | `query`, `prefer_domains?: string[]` | Top results (title, url, snippet). Official domains ranked first |
 | `fetch_url` | `url` | Clean text (≤ 20k chars stored, 3k returned) + `content_id` |
@@ -62,6 +62,8 @@ When you want to save or change a profile value, call propose_profile_update —
 Current phase: {phase}. {phase_instructions}
 ```
 Each phase has a `prompts/phase_<name>.md` with goals, an example turn in mr/hi/en, and an exit hint.
+
+UI events (card taps) reach the model as a user-role line starting `[UI event]`, stored as `messages.role=system, input_mode=ui`. Core onboarding fields: `phases.CORE_FIELDS`.
 
 ## Language
 - Session language = `assistant_settings.language`. Per turn, if STT detects another language confidently, reply in that language and store `lang` on the message.

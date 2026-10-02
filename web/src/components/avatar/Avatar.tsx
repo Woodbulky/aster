@@ -26,8 +26,11 @@ export const isAvatarId = (v: unknown): v is AvatarId => AVATAR_IDS.includes(v a
 
 const center = { transformBox: "fill-box", transformOrigin: "center" } as const;
 
-/** Soft orb with a face. Idle state: slow breathe + a blink every 3–6 s. Other states arrive with voice (M4). */
-export function Avatar({ id, size = 128 }: { id: string; size?: number }) {
+export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
+
+/** Soft orb with a face. Idle: slow breathe + a blink every 3–6 s. Thinking: eyes glance up and
+ * the breathe quickens. Happy: a little hop and a wider smile. Listening/speaking arrive with voice (M4). */
+export function Avatar({ id, size = 128, state = "idle" }: { id: string; size?: number; state?: AvatarState }) {
   const spec: AvatarSpec = AVATARS[isAvatarId(id) ? id : "aster"];
   const reduce = useReducedMotion();
   const gid = useId();
@@ -49,7 +52,9 @@ export function Avatar({ id, size = 128 }: { id: string; size?: number }) {
     return () => window.clearTimeout(timer);
   }, [reduce]);
 
-  const loop = { duration: 5, repeat: Infinity, ease: "easeInOut" } as const;
+  const thinking = state === "thinking";
+  const happy = state === "happy";
+  const loop = { duration: thinking ? 2.2 : 5, repeat: Infinity, ease: "easeInOut" } as const;
 
   return (
     <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={spec.name} className="shrink-0 overflow-visible">
@@ -65,10 +70,18 @@ export function Avatar({ id, size = 128 }: { id: string; size?: number }) {
         </radialGradient>
       </defs>
       <circle cx={60} cy={64} r={58} fill={`url(#${gid}h)`} />
-      <motion.g style={center} animate={reduce ? undefined : { scale: [1, 1.035, 1], y: [0, -1.5, 0] }} transition={loop}>
+      <motion.g
+        style={center}
+        animate={reduce ? undefined : happy ? { scale: [1, 1.07, 1], y: [0, -7, 0] } : { scale: [1, 1.035, 1], y: [0, -1.5, 0] }}
+        transition={happy ? { duration: 0.6, repeat: 2, ease: "easeOut" } : loop}
+      >
         <ellipse cx={60} cy={60} rx={47} ry={46} fill={`url(#${gid}b)`} />
         <ellipse cx={42} cy={34} rx={13} ry={7} fill="#fff" opacity={0.18} transform="rotate(-30 42 34)" />
-        <motion.g style={center} animate={{ scaleY: blink ? 0.1 : 1 }} transition={{ duration: 0.07 }}>
+        <motion.g
+          style={center}
+          animate={{ scaleY: blink ? 0.1 : 1, x: thinking ? 3 : 0, y: thinking ? -4 : 0 }}
+          transition={{ duration: blink ? 0.07 : 0.3 }}
+        >
           {[49, 71].map((cx) => (
             <g key={cx}>
               <ellipse cx={cx} cy={58} rx={spec.eyeShape.rx} ry={spec.eyeShape.ry} fill={spec.eye} />
@@ -78,7 +91,7 @@ export function Avatar({ id, size = 128 }: { id: string; size?: number }) {
         </motion.g>
         {spec.cheeks &&
           [38, 82].map((cx) => <ellipse key={cx} cx={cx} cy={70} rx={5.5} ry={3} fill="#f6a99b" opacity={0.45} />)}
-        <path d="M55 73 Q60 77.5 65 73" stroke={spec.eye} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.7} />
+        <path d={happy ? "M53 72 Q60 80 67 72" : "M55 73 Q60 77.5 65 73"} stroke={spec.eye} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.7} />
       </motion.g>
     </svg>
   );

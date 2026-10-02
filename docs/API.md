@@ -7,7 +7,7 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 |---|---|---|
 | GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam/bhashini/tavily: configured\|missing}`, version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
 | GET | `/api/me` | profile (masked) + assistant settings |
-| POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → saves confirmed values (+ audit) |
+| POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → `{status: accepted\|rejected, saved}`. Own pending proposals only (else 404). `edits` may only touch proposed keys; `""` = don't save that field. Kept values get `source_type` = the proposal's evidence + `source_ref {proposal_id, message_id}`; corrected values get `manual`. Audit `profile.confirmed`/`profile.rejected` with field names only |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |
 | PUT | `/api/profile` | profile form values typed by the user (`profiles` columns, `""` = not provided; unknown keys → 422; `aadhaar_last4` only) → saved with `profile_field_sources.source_type='manual'`. Conversation-derived values still go through proposals (`/api/profile/confirm`). |
 | POST | `/api/sessions` | `{portal?, scheme_key?, portal_url?}` → session |
@@ -28,7 +28,7 @@ Client → server (JSON unless noted):
 | `user_text` | `text` |
 | `audio_start` | `mime, lang_hint` → then ONE binary frame (audio) → `audio_end` |
 | `interrupt` | — |
-| `ui_event` | `name` (e.g. `profile_confirmed`, `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload` |
+| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {portal, scheme_key?}`; later: `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload`. `form_selected` calls `set_form` in code, not via the LLM |
 | `screen_frame` | `frame_id, reason` → then ONE binary frame (JPEG) |
 | `ping` | — |
 
@@ -49,3 +49,11 @@ Server → client:
 | `pause_guidance` | `reason` |
 | `error` | `code, message` |
 | `pong` | — |
+
+Close codes (client must not retry): `4400` first message was not `hello`, `4401` bad token, `4404` session missing or not yours. Rate limit: 30 messages/min per connection (`error rate_limited`). A new session (no messages yet) gets a greeting turn right after `ready`.
+
+Cards (`card.kind` → `payload`):
+| kind | payload |
+|---|---|
+| `confirm_profile` | `{proposal_id, updates: {field_key: value}}` → answer via `POST /api/profile/confirm`, then `ui_event profile_confirmed/rejected` |
+| `scheme_suggestions` | `{options: [{portal, scheme_key\|null, name}], note}` → tap sends `ui_event form_selected` |

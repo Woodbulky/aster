@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import me, sessions
 from app.config import Settings, get_settings
 from app.llm.client import breakers, fallback_ready, gpu_url, route
+from app.ws import voice
 
 VERSION = "0.1.0"
 
@@ -19,6 +20,7 @@ app.add_middleware(
 )
 app.include_router(me.router)
 app.include_router(sessions.router)
+app.include_router(voice.router)
 
 
 def _key(v: str) -> str:

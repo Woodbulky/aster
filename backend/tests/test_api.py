@@ -93,6 +93,7 @@ def test_put_profile_casts_and_drops_blanks(api) -> None:
     }
     assert c.put("/api/profile", json=body, headers=AUTH).status_code == 200
     assert calls == [
+        ("get_profile", ("u1",)),
         (
             "update_profile",
             (
@@ -105,7 +106,7 @@ def test_put_profile_casts_and_drops_blanks(api) -> None:
                     "aadhaar_last4": "1234",
                 },
             ),
-        )
+        ),
     ]
 
 
@@ -140,3 +141,130 @@ def test_create_session(api) -> None:
         c.post("/api/sessions", json={"portal_url": "javascript:x"}, headers=AUTH).status_code
         == 422
     )
+
+
+# ---------- POST /api/profile/confirm (guardrail 4) ----------
+P1 = "00000000-0000-0000-0000-0000000000a1"
+
+
+@pytest.fixture
+def confirm(store, monkeypatch: pytest.MonkeyPatch):
+    from types import SimpleNamespace
+
+    store.proposals.append(
+        {
+            "id": P1,
+            "user_id": "u1",
+            "session_id": "s1",
+            "status": "pending",
+            "evidence": "text",
+            "message_id": "m1",
+            "updates": {"full_name": "Aarav Patil", "district": "Pune", "ssc_year": 2021},
+        }
+    )
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        auth=SimpleNamespace(get_user=get_user)
+    )
+    try:
+        yield lambda body: TestClient(app).post("/api/profile/confirm", json=body, headers=AUTH)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_confirm_saves_with_sources(confirm, store) -> None:
+    r = confirm({"proposal_id": P1, "accept": True, "edits": {"district": "Pune City"}})
+    assert r.status_code == 200
+    assert store.profile == {
+        "id": "u1",
+        "full_name": "Aarav Patil",
+        "district": "Pune City",
+        "ssc_year": 2021,
+    }
+    ref = {"proposal_id": P1, "message_id": "m1"}
+    assert store.sources == {
+        "full_name": {"source_type": "text", "source_ref": ref},
+        "ssc_year": {"source_type": "text", "source_ref": ref},
+        "district": {"source_type": "manual", "source_ref": ref},  # corrected in the card
+    }
+    assert store.proposals[0]["status"] == "accepted"
+    action, payload = store.audit[-1]
+    assert action == "profile.confirmed" and "Pune" not in str(payload)  # names only, no values
+    # answered once: a second confirm finds nothing pending
+    assert confirm({"proposal_id": P1, "accept": True}).status_code == 404
+
+
+def test_confirm_blank_edit_skips_field(confirm, store) -> None:
+    assert (
+        confirm({"proposal_id": P1, "accept": True, "edits": {"district": ""}}).status_code == 200
+    )
+    assert "district" not in store.profile and "district" not in store.sources
+
+
+def test_reject_saves_nothing(confirm, store) -> None:
+    assert confirm({"proposal_id": P1, "accept": False}).json()["status"] == "rejected"
+    assert store.profile == {"id": "u1"} and store.audit[-1][0] == "profile.rejected"
+
+
+@pytest.mark.parametrize(
+    "body,code",
+    [
+        ({"proposal_id": P1, "accept": True, "edits": {"caste": "X"}}, 422),  # not proposed
+        ({"proposal_id": P1, "accept": True, "edits": {"ssc_year": "1800"}}, 422),
+        ({"proposal_id": "00000000-0000-0000-0000-000000000009", "accept": True}, 404),
+        ({"proposal_id": P1, "accept": True, "user_id": "u2"}, 422),
+    ],
+)
+def test_confirm_rejects(confirm, store, body: dict, code: int) -> None:
+    assert confirm(body).status_code == code
+    assert store.profile == {"id": "u1"} and store.proposals[0]["status"] == "pending"
+
+
+def test_confirm_other_users_proposal(confirm, store) -> None:
+    store.proposals[0]["user_id"] = "u2"
+    assert confirm({"proposal_id": P1, "accept": True}).status_code == 404
+    assert store.profile == {"id": "u1"}
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("आधार 1234 5678 9012 आहे", "आधार [number ending 9012] आहे"),
+        ("aadhaar 123456789012", "aadhaar [number ending 9012]"),
+        ("खाते ३१२३४५६७८९०१२३", "खाते [number ending ०१२३]"),
+        ("acct 12345678901", "acct [number ending 8901]"),
+        # kept: mobile, income, years, percentages
+        ("9876543210, income 148000, 2021, 81.5%", "9876543210, income 148000, 2021, 81.5%"),
+    ],
+)
+def test_redact_ids(raw: str, expected: str) -> None:
+    assert repo.redact_ids(raw) == expected
+
+
+def test_add_message_redacts_before_storing() -> None:
+    inserted: list[dict] = []
+
+    class Q:
+        def insert(self, row):
+            inserted.append(row)
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[inserted[-1]])
+
+    db = SimpleNamespace(table=lambda _name: Q())
+    repo.add_message(
+        db,
+        "u1",
+        "s1",
+        {"role": "tool", "content": "1234-5678-9012", "tool_payload": {"args": "123456789012"}},
+    )
+    assert inserted[0]["content"] == "[number ending 9012]"
+    assert inserted[0]["tool_payload"] == {"args": "[number ending 9012]"}
+
+
+def test_put_profile_skips_unchanged_fields(api, monkeypatch: pytest.MonkeyPatch) -> None:
+    c, calls = api
+    monkeypatch.setattr(repo, "get_profile", lambda *_a: {"id": "u1", "full_name": "Asha Patil"})
+    body = {"full_name": "Asha Patil", "district": "Pune"}
+    assert c.put("/api/profile", json=body, headers=AUTH).status_code == 200
+    assert calls == [("update_profile", ("u1", {"district": "Pune"}))]

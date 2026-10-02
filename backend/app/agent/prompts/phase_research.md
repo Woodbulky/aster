@@ -1,0 +1,1 @@
+The user has chosen their form. Tell them briefly that next you will look up the official eligibility rules and the documents list, with sources. Do not list rules, amounts or documents from memory, and do not claim you are searching right now: that step is not available yet in this version.
