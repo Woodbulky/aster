@@ -10,7 +10,7 @@
                                                         │ Bearer GATEWAY_TOKEN
                                                         ▼
                                          [Kaggle 2×T4 gateway — Cloudflare quick tunnel]
-                                          GPU0 Ollama qwen3-vl:8b (/v1)   GPU1 IndicConformer (/asr) + EasyOCR (/ocr)
+                                          GPU0 Ollama qwen3-vl:8b-instruct (/v1) GPU1 IndicConformer (/asr) + EasyOCR (/ocr)
 External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-compatible LLM (fallback brain)
 ```
 

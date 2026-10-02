@@ -155,11 +155,6 @@ def _client() -> httpx.AsyncClient:
     return _http
 
 
-# qwen3-vl on Ollama thinks by default: with a token budget it can spend it all on reasoning and
-# stream no content. Agent turns need fast answers, so thinking is off unless a caller asks.
-GPU_DEFAULTS: dict[str, Any] = {"reasoning_effort": "none"}
-
-
 def _target(s: Settings, p: Provider) -> tuple[str, str, list[str]]:
     """(chat completions URL, model, api keys to try in order)."""
     if p == "gpu":
@@ -171,8 +166,6 @@ def _target(s: Settings, p: Provider) -> tuple[str, str, list[str]]:
 
 async def _sse(s: Settings, p: Provider, body: dict[str, Any]) -> AsyncIterator[Chunk]:
     url, model, keys = _target(s, p)
-    if p == "gpu":
-        body = {**GPU_DEFAULTS, **body}
     # ponytail: always starts at key 1, so a rate-limited first key costs one extra round trip.
     # Groq limits are per organization: rotation only helps if the keys are from different orgs.
     for i, key in enumerate(keys):

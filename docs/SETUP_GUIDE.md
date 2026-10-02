@@ -95,7 +95,7 @@ on conflict (id) do update set secret = excluded.secret;
 
 ## Phase 3 — Kaggle GPU worker
 
-You don't download the model yourself. Cell 5 of the notebook makes Ollama pull `qwen3-vl:8b` (~6 GB) into the session every time it starts, which takes a few minutes.
+You don't download the model yourself. Cell 5 of the notebook makes Ollama pull `qwen3-vl:8b-instruct` (~6 GB; the plain `8b` tag thinks before answering and `/v1` cannot turn that off) into the session every time it starts, which takes a few minutes.
 
 1. **Verify your phone number**: kaggle.com → your profile → Settings → Phone verification. GPU and Internet stay locked without it.
 2. **Hugging Face**: open `huggingface.co/ai4bharat/indic-conformer-600m-multilingual` → accept the terms (gated model). Create a Read token.

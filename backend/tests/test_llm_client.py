@@ -143,7 +143,7 @@ def test_streams_from_gpu_with_gateway_token(monkeypatch: pytest.MonkeyPatch) ->
     assert {c.provider for c in chunks} == {"gpu"}
     assert str(seen[0].url) == "https://gpu.example/v1/chat/completions"
     assert seen[0].headers["authorization"] == "Bearer gt"
-    assert json.loads(seen[0].content)["model"] == "qwen3-vl:8b"
+    assert json.loads(seen[0].content)["model"] == "qwen3-vl:8b-instruct"
 
 
 def test_gpu_down_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,13 +276,3 @@ def test_error_body_with_image_is_redacted(monkeypatch: pytest.MonkeyPatch, capl
         collect(s(**FB), DOC, sensitive_kind="document_image", user_id="u1")
     assert "A" * 80 not in str(e.value) and "A" * 80 not in caplog.text
     assert "[redacted]" in str(e.value)
-
-
-def test_gpu_thinking_off_by_default_fallback_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = use_transport(monkeypatch, lambda r: httpx.Response(200, content=sse("ok")))
-    collect(s(gpu_url_override="https://gpu.example", **FB), HELLO)
-    assert json.loads(seen[0].content)["reasoning_effort"] == "none"
-    collect(s(gpu_url_override="https://gpu.example", **FB), HELLO, reasoning_effort="low")
-    assert json.loads(seen[1].content)["reasoning_effort"] == "low"  # caller wins
-    collect(s(**FB), HELLO)
-    assert "reasoning_effort" not in json.loads(seen[2].content)

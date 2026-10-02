@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     gpu_worker_name: str = "kaggle-main"
     gpu_stale_seconds: int = 180
     gpu_url_override: str = ""
-    brain_model: str = "qwen3-vl:8b"
+    brain_model: str = "qwen3-vl:8b-instruct"  # plain 8b thinks; /v1 ignores think/reasoning_effort
 
     # fallback brain
     fallback_llm_base_url: str = ""
