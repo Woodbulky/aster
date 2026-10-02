@@ -1,0 +1,20 @@
+{
+  "login.title": "Aster मध्ये साइन इन करा",
+  "login.subtitle": "तुमची प्रोफाइल सेव्ह राहते, त्यामुळे माहिती एकदाच सांगावी लागते.",
+  "login.google": "Google ने पुढे जा",
+  "login.or": "किंवा",
+  "login.email": "ईमेल",
+  "login.send_link": "मला साइन-इन लिंक पाठवा",
+  "login.sending": "पाठवत आहोत…",
+  "login.link_sent": "तुमचा ईमेल तपासा आणि साइन इन करण्यासाठी लिंकवर टॅप करा.",
+  "login.rate_limited": "खूप ईमेल पाठवले गेले आहेत — Google ने साइन इन करा किंवा काही मिनिटे थांबा.",
+  "login.error": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.",
+  "login.auth_failed": "ही साइन-इन लिंक चालली नाही. कृपया नवीन लिंक मागवा.",
+  "onboarding.title": "तुमचा सहाय्यक निवडा",
+  "onboarding.avatar": "अवतार",
+  "onboarding.name": "सहाय्यकाचे नाव",
+  "onboarding.language": "भाषा",
+  "onboarding.save": "सेव्ह करा आणि पुढे जा",
+  "onboarding.saved": "सेव्ह झाले! चॅट पुढच्या अपडेटमध्ये येईल.",
+  "onboarding.sign_out": "साइन आउट"
+}

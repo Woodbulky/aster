@@ -1,19 +1,13 @@
 import Link from "next/link";
 
+import { Avatar } from "@/components/avatar/Avatar";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-16 text-center">
-      {/* Static orb placeholder; the animated avatar arrives in M1. */}
-      <div
-        aria-hidden
-        className="relative size-32 rounded-full bg-primary shadow-[0_0_0_10px_var(--accent)]"
-      >
-        <span className="absolute top-12 left-9 h-5 w-4 rounded-full bg-background" />
-        <span className="absolute top-12 right-9 h-5 w-4 rounded-full bg-background" />
-      </div>
+      <Avatar id="aster" size={160} />
 
       <div className="max-w-md space-y-3">
         <h1 className="font-heading text-4xl font-bold tracking-tight">

@@ -5,7 +5,7 @@ Tick the box when its acceptance criteria are verified.
 
 ## Status
 - [x] M0 Scaffold
-- [ ] M1 Supabase schema + auth + onboarding UI
+- [x] M1 Supabase schema + auth + onboarding UI
 - [ ] M2 Backend core (auth, LLM client, GPU discovery, health)
 - [ ] M3 Text agent (WS, phases, onboarding + choose_form)
 - [ ] M4 Voice (VAD, STT/TTS router, avatar states, barge-in)
