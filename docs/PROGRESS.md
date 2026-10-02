@@ -81,7 +81,7 @@
 - Phone width was not checked in a real viewport (layout is responsive: drawer sidebar under `lg`).
 
 
-## 2026-10-03 · M2 Backend core (⏳ GPU-up check pending)
+## 2026-10-03 · M2 Backend core ✅
 **What changed**
 - Deps: `supabase` 2.32, `httpx` 0.28 (both in the fixed stack).
 - `app/db/supabase.py`: a service-key client (`get_db`, singleton) plus repos for profile, assistant, sessions, messages and audit. Each one takes the JWT `user_id` and filters by it.
@@ -104,11 +104,13 @@
 - Live `/health` (gpu mode, stale row 6 min old): `gpu: down, llm_fallback: up, sarvam: configured, tavily: configured`. The service-key discovery query returns the `kaggle-main` row.
 - Live: `/api/me` returns 401 with no token and 401 with a forged JWT (rejected by Supabase Auth). The CORS preflight from `localhost:3000` → ACAO echoed.
 - Advisors: unchanged from M1 (accepted items only).
+- **GPU (Kaggle running, `qwen3-vl:8b-instruct`):** `/health` → `llm.active: gpu, providers.gpu: up`. The smoke test streamed Marathi with `provider=gpu first_token=1.46s total=6.44s`. Notebook stopped (tunnel dead, row still fresh): Cloudflare 530 → `provider=fallback first_token=1.48s` (user run).
+- **Model switch:** plain `qwen3-vl:8b` only thinks over `/v1`. Probed on the live gateway at `max_tokens=300`: `reasoning_effort=none`, `reasoning.effort=none`, `think=false` and `/no_think` all gave content=0. A reply only came at `max_tokens=1500`, after 35 s. Moved to `qwen3-vl:8b-instruct` (same size) in the notebook, config, env examples, CLAUDE.md and docs.
+- **Browser click-through (user, :3000 → local backend):** the companion save → `assistant_settings` = `aster / Harsh / en`. The profile save → `PUT /api/profile 200` → `profiles` filled (taluka updated), 14 `profile_field_sources` rows, all `manual`.
 
 **Open issues**
-- **Pending (user):** start the Kaggle notebook, then confirm `/health` shows `gpu: up` and the smoke test reports `provider=gpu`. Stop it and rerun → `provider=fallback` < 8 s. Then tick M2.
-- **Pending (user):** browser click-through against the local backend (a second dev server can't run alongside the one on :3000).
-- Render env: add `SUPABASE_SECRET_KEY`, `GATEWAY_TOKEN`, `FALLBACK_LLM_*`, `SARVAM_API_KEY`, `TAVILY_API_KEY` in the dashboard before pushing. Until then the live `/api/*` calls return 500.
+- Qwen sometimes slips a Chinese character into Marathi output (seen once: "च核 करा"). M3: say so in the system prompt and/or strip CJK in post-processing before the reply is spoken or shown.
+- Render env: set `BRAIN_MODEL=qwen3-vl:8b-instruct` if it is set there. Add `SUPABASE_SECRET_KEY`, `GATEWAY_TOKEN`, `FALLBACK_LLM_*`, `SARVAM_API_KEY`, `TAVILY_API_KEY` in the dashboard before pushing. Until then the live `/api/*` calls return 500.
 - Groq rate limits are per **organization**: rotating keys only helps if they are from different orgs.
 - `update_profile` writes the values, then the sources: two calls, not atomic. Move both into one RPC if it ever matters.
 - `assistant_settings.language` DB default is still `'mr'` (the UI default is `en`), so a never-saved user on a new device gets `mr` via `loadMe`.
