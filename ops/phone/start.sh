@@ -5,6 +5,7 @@ ENV_FILE="$HOME/.aster.env"
 [ -f "$ENV_FILE" ] && source "$ENV_FILE"
 TUNNEL_MODE="${TUNNEL_MODE:-named}"
 TUNNEL_NAME="${TUNNEL_NAME:-aster}"
+TUNNEL_CONFIG="${TUNNEL_CONFIG:-$HOME/.cloudflared/aster.yml}"   # never config.yml: n8n's tunnel uses it
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 termux-wake-lock 2>/dev/null || true
@@ -15,7 +16,7 @@ tmux new-session -d -s aster-api \
   "proot-distro login ubuntu -- bash -lc 'cd /root/aster/backend && /root/.local/bin/uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 2>&1 | tee -a /root/aster-api.log'"
 
 if [ "$TUNNEL_MODE" = "named" ]; then
-  tmux new-session -d -s aster-tunnel "cloudflared tunnel --no-autoupdate run $TUNNEL_NAME"
+  tmux new-session -d -s aster-tunnel "cloudflared tunnel --no-autoupdate --config $TUNNEL_CONFIG run $TUNNEL_NAME"
 else
   tmux new-session -d -s aster-tunnel "bash $SCRIPT_DIR/quick_tunnel.sh"
 fi

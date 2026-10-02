@@ -4,9 +4,9 @@
 [Next.js PWA — Vercel]  avatar · chat · voice (VAD) · uploads · screen share (desktop) · Document PiP
       │ Supabase JS (auth, RLS reads, storage uploads)          │ HTTPS + WSS (JWT)
       ▼                                                         ▼
-[Supabase cloud]  ◀──── service key ────  [Phone: Termux → proot Ubuntu]  FastAPI backend
+[Supabase cloud]  ◀──── service key ────  [Render web service — singapore]  FastAPI backend
  Auth · Postgres · Storage · Realtime        agent orchestrator · speech router · research · verification
- gpu_endpoints / public_endpoints            exposed by Cloudflare Tunnel (named: api.<domain>, or quick + registered)
+ gpu_endpoints / public_endpoints            https://<service>.onrender.com (render.yaml, auto-deploy on push to main)
                                                         │ Bearer GATEWAY_TOKEN
                                                         ▼
                                          [Kaggle 2×T4 gateway — Cloudflare quick tunnel]
@@ -24,7 +24,8 @@ External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-
 
 ## Endpoint discovery
 - **GPU**: the backend reads `select url from gpu_endpoints where name='kaggle-main' and last_seen > now()-interval '3 minutes'`. The result is cached for 30 s. If there is none, it uses fallbacks.
-- **Backend URL for web**: `NEXT_PUBLIC_API_URL` if set (named tunnel). Otherwise the web reads `public_endpoints` row `api` (quick tunnel registered by `ops/phone/quick_tunnel.sh`).
+- **Backend URL for web**: `NEXT_PUBLIC_API_URL=https://<service>.onrender.com`. Only for the phone backup with a quick tunnel: leave it empty and the web reads `public_endpoints` row `api` (registered by `ops/phone/quick_tunnel.sh`).
+- **Render free plan sleeps after ~15 min idle** (cold start ~1 min, breaks the first WS connect). For the demo: a keep-warm pinger hitting `/health` every ~10 min (e.g. a cron job / uptime monitor), or switch to the Starter plan for demo week.
 
 ## Fallback chains (implemented in code, each with a timeout)
 | Capability | Chain | Timeout |
@@ -53,4 +54,4 @@ mic → VAD end → WS binary (webm/opus) → STT router → transcript event �
 | Env | web | backend | GPU |
 |---|---|---|---|
 | dev | `pnpm dev` (localhost:3000) | laptop `uvicorn --reload` | Kaggle or fallback |
-| demo | Vercel | phone + named tunnel | Kaggle "Save & Run All" |
+| demo | Vercel | Render (keep-warm or Starter); backup: phone + tunnel | Kaggle "Save & Run All" |

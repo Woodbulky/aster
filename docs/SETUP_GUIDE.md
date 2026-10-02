@@ -1,8 +1,8 @@
 # Aster — Setup Guide (do these in order)
 
-**Order:** accounts → repo + Claude Code → Supabase (+ MCP) → Kaggle GPU → phone server → build with Claude Code → Vercel → demo day.
+**Order:** accounts → repo + Claude Code → Supabase (+ MCP) → Kaggle GPU → (optional) phone backup → build with Claude Code → backend on Render → Vercel → demo day.
 
-Why this order: Supabase must exist before the GPU worker can register its URL. The GPU is the riskiest piece, so prove it on day 1. You develop the backend on your laptop and move it to the phone once it runs.
+Why this order: Supabase must exist before the GPU worker can register its URL. The GPU is the riskiest piece, so prove it on day 1. You develop the backend on your laptop; Render deploys it from `main` (render.yaml). The phone is only an optional backup host.
 
 ---
 
@@ -18,7 +18,8 @@ Why this order: Supabase must exist before the GPU worker can register its URL. 
 | Bhashini | bhashini.gov.in → register on ULCA | `userID`, `ulcaApiKey` | backend `.env` |
 | Tavily | app.tavily.com | `TAVILY_API_KEY` | backend `.env` |
 | Fallback LLM | any OpenAI-compatible provider with a vision model (e.g. Gemini's OpenAI-compatible endpoint, Groq, OpenRouter) | base URL, key, model | backend `.env` |
-| Cloudflare | dash.cloudflare.com (+ a domain if you have one) | — | phone |
+| Render | render.com (login with GitHub) | — | backend deploy |
+| Cloudflare (optional) | dash.cloudflare.com (+ a domain if you have one) | — | phone backup |
 | Vercel | vercel.com (login with GitHub) | — | web deploy |
 
 Generate two random secrets on your laptop and save them in a password manager:
@@ -132,9 +133,11 @@ You don't download the model yourself. Cell 5 of the notebook makes Ollama pull 
 
 ---
 
-## Phase 4 — Phone server (OnePlus Nord 2T: Termux + proot Ubuntu)
+## Phase 4 — Phone server (optional backup) (OnePlus Nord 2T: Termux + proot Ubuntu)
 
-Develop on the laptop first. Move the backend to the phone after M2 works locally. You can still do 4.1–4.6 now to prove the tunnel.
+**Optional backup.** The backend runs on Render (Phase 5b). Set up the phone only if you want a fallback host for the demo.
+
+⚠️ n8n already runs a Cloudflare tunnel on this phone and may use `~/.cloudflared/config.yml`. Aster's tunnel uses its own file `~/.cloudflared/aster.yml` — never touch `config.yml`.
 
 ### 4.1 Android settings (so Android doesn't kill the server)
 1. Settings → Apps → Termux → Battery → **Unrestricted / Don't optimise** and allow background activity (OxygenOS label names vary).
@@ -197,16 +200,17 @@ uv python install 3.12
 
 **Option A — stable URL (recommended; needs a domain on Cloudflare).** Add the domain to Cloudflare and switch its nameservers at your registrar. Then in Termux:
 ```bash
-cloudflared tunnel login                         # prints a URL → open it on the laptop → pick your domain
+ls ~/.cloudflared/cert.pem || cloudflared tunnel login   # skip login if cert.pem exists (n8n set it up)
 cloudflared tunnel create aster              # note the tunnel UUID; creates ~/.cloudflared/<UUID>.json
 cloudflared tunnel route dns aster api.<yourdomain>
-cp <path-to-repo>/ops/phone/cloudflared-config.yml ~/.cloudflared/config.yml
-nano ~/.cloudflared/config.yml                   # put the UUID + hostname
-cloudflared tunnel run aster
+cp <path-to-repo>/ops/phone/cloudflared-aster.yml ~/.cloudflared/aster.yml   # NOT config.yml
+nano ~/.cloudflared/aster.yml                    # put the UUID + hostname
+cloudflared tunnel --config ~/.cloudflared/aster.yml ingress validate
+cloudflared tunnel --config ~/.cloudflared/aster.yml run aster
 ```
-Test from the laptop: `curl https://api.<yourdomain>/health`. Set `NEXT_PUBLIC_API_URL=https://api.<yourdomain>` in web env.
+Test from the laptop: `curl https://api.<yourdomain>/health`. To fail over to the phone, set `NEXT_PUBLIC_API_URL=https://api.<yourdomain>` in web env.
 
-**Option B — no domain (quick tunnel + auto-registration).** The URL changes on every restart, so the script registers it in Supabase `public_endpoints` and the web app discovers it. Leave `NEXT_PUBLIC_API_URL` empty.
+**Option B — no domain (quick tunnel + auto-registration).** The URL changes on every restart, so the script registers it in Supabase `public_endpoints` and the web app discovers it. To fail over to it, set `NEXT_PUBLIC_API_URL` empty.
 
 The repo lives inside Ubuntu. From Termux, its path is:
 `$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu/root/aster`
@@ -216,6 +220,7 @@ The repo lives inside Ubuntu. From Termux, its path is:
 cat > ~/.aster.env << 'ENV'
 TUNNEL_MODE=named            # or: quick
 TUNNEL_NAME=aster
+TUNNEL_CONFIG=$HOME/.cloudflared/aster.yml
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon key>
 GPU_REGISTER_SECRET=<secret>
@@ -245,14 +250,21 @@ Approve the plan, let it build, check the evidence, commit, then `/milestone M1`
 - Before M2, start the Kaggle notebook. Before M4, have the Sarvam/Bhashini keys. Before M5, have Tavily, and the team must verify the knowledge packs (Claude Code will stop and ask).
 - If Claude Code drifts from the specs, say: "Re-read CLAUDE.md and docs/<X>.md and fix the deviation."
 
+## Phase 5b — Backend on Render (after M0 adds `render.yaml`)
+1. render.com → **New → Blueprint** → connect GitHub → pick the `aster` repo. Render reads `render.yaml` (service in `backend/`, region singapore, plan free).
+2. Render asks for every env var marked `sync: false` — fill them from `backend/.env.example` (same values as your laptop `.env`). Secrets stay in Render, never in git.
+3. Apply. Wait for the deploy, then check: `curl https://<service>.onrender.com/health` → `{"status":"ok",...}`.
+4. Every push to `main` redeploys automatically.
+5. ⚠️ The free plan sleeps after ~15 min idle (first request then takes ~1 min). Before judging: set up a keep-warm pinger on `/health` every ~10 min (e.g. a free uptime monitor), or switch to the Starter plan for demo week.
+
 ## Phase 6 — Deploy the web app (after M1, redeploy anytime)
 1. Vercel → Add New Project → import `aster` → Root Directory = `web`.
-2. Environment variables: copy from `web/.env.local.example`.
-3. Deploy. Then add `https://<project>.vercel.app/**` to Supabase redirect URLs and `ALLOWED_ORIGINS` in the backend `.env`.
+2. Environment variables: copy from `web/.env.local.example`; set `NEXT_PUBLIC_API_URL=https://<service>.onrender.com`.
+3. Deploy. Then add `https://<project>.vercel.app/**` to Supabase redirect URLs and `ALLOWED_ORIGINS` in the Render env vars (and backend `.env`).
 
 ## Phase 7 — Demo-day runbook
 - [ ] T-60 min: Kaggle → Save & Run All. Check `gpu_endpoints.last_seen` is fresh.
-- [ ] T-45: phone on charger, Wi-Fi (not your own hotspot), run `aster`, check `curl https://api.../health` shows all providers up.
+- [ ] T-45: `curl https://<service>.onrender.com/health` shows all providers up (keep-warm pinger running). Backup: phone on charger, run `aster`, `curl https://api.../health`.
 - [ ] T-30: log in with the demo account on the laptop (Chrome) and the phone; mic permission granted; portal tab ready.
 - [ ] T-15: full dry run of the demo script; backup video ready.
 - [ ] Fallback drill done earlier: stop Kaggle → Aster still answers (fallback LLM + Sarvam).
