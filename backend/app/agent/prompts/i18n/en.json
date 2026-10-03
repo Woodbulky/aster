@@ -25,5 +25,6 @@
   "why.current_year": "Some scholarships are for first-year students; renewals work differently.",
   "why._generic": "I ask so the form can be filled correctly. You can skip anything you don't want to share.",
   "why._source": "Asked once for your Aster profile and reused across forms. Each scheme's exact rules are checked later against official sources.",
-  "llm_unavailable": "Sorry, I can't think right now — my connection is down. Your cards and profile still work. Please try again in a minute."
+  "llm_unavailable": "Sorry, I can't think right now — my connection is down. Your cards and profile still work. Please try again in a minute.",
+  "reply_in": "Reply only in English."
 }

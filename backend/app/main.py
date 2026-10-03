@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import me, sessions
 from app.config import Settings, get_settings
 from app.llm.client import breakers, fallback_ready, gpu_url, route
+from app.speech.router import breakers as speech_breakers
 from app.ws import voice
 
 VERSION = "0.1.0"
@@ -25,6 +26,13 @@ app.include_router(voice.router)
 
 def _key(v: str) -> str:
     return "configured" if v else "missing"
+
+
+def _speech(name: str, key: str) -> str:
+    if not key:
+        return "missing"
+    b = speech_breakers.get(name)
+    return "open" if b and not b.ok() else "up"
 
 
 @app.get("/health")
@@ -47,7 +55,8 @@ def health(s: Annotated[Settings, Depends(get_settings)]) -> dict[str, object]:
             "gpu": gpu,
             "llm_fallback": fb,
             "sarvam": _key(s.sarvam_api_key),
-            "bhashini": _key(s.bhashini_ulca_api_key and s.bhashini_user_id),
+            "sarvam_stt": _speech("stt:sarvam", s.sarvam_api_key),
+            "sarvam_tts": _speech("tts:sarvam", s.sarvam_api_key),
             "tavily": _key(s.tavily_api_key),
         },
     }

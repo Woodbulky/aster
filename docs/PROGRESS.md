@@ -162,3 +162,61 @@
 - Message `lang` = the session language from `hello`; the model follows the conversation's language, so a Marathi reply can be stored as `en` after a toggle. M4 STT detection fixes this for voice.
 - The Marathi and Hindi templates and prompt examples were written by Claude and need a native speaker's review.
 - The research phase has no tools until M5: Aster only says research comes next.
+
+## 2026-10-03 · M4 Voice ✅ (manual mic checks pending, see below)
+**What changed**
+- **No Bhashini** (no credentials, user decision). Chains: STT Sarvam `saaras:v4` → Kaggle `/asr` (hi/mr); TTS Sarvam `bulbul:v3` (mp3, voice `priya`) → `tts_unavailable` → browser `speechSynthesis` (Marathi falls back to a Hindi voice). Vendor docs checked 2026-10-03; models/voices/timeouts in `config.py` with defaults. Removed Bhashini from env example, `render.yaml`, CLAUDE.md, ARCHITECTURE, VOICE.
+- `app/speech/`:
+  - `router.py`: per-provider timeout (STT 6 s, TTS 5 s) + the existing `Breaker`.
+  - `local_gpu.py`: discovers the GPU even when `LLM_PRIMARY=fallback`; that switch is about the brain only.
+  - `sentences.py`: splitter (`. ? ! । \n`, 25–220 chars). The first chunk may also end at `, ; :` so Aster starts talking sooner. Number-aware: "3.5" and "1,200" don't split.
+  - `normalize_for_tts`: ₹ amounts, dates, masked numbers "ending in 4417", emoji/markdown stripped. **Full Aadhaar/bank numbers are masked via `redact_ids` before TTS** (guardrails 5/6; found by `/guardrails`).
+  - `stream.py` `Speaker`: concurrent TTS per sentence, sent in `seq` order. `flush()` before a tool round, so "Thanks!" isn't held through the tool call and the next LLM round. Capped at 15 sentences.
+- WS (`app/ws/voice.py`):
+  - `audio_start` + one binary frame (≤ 2 MB) + `audio_end`. New messages: `interrupt`, `transcript`, `tts_audio` (+ binary), `tts_unavailable`, `turn_metrics`.
+  - Turns run as tasks: `interrupt` or a new utterance cancels the LLM + TTS; UI events queue behind the running turn. A lock keeps each `tts_audio` header next to its binary frame.
+  - The detected STT language is stored on the user's message (`input_mode=voice`); the reply language is the toggle (see the language-switch fix below). After a voice turn, card-tap replies are spoken too; typing switches speech off.
+- Orchestrator:
+  - `REPLY_MAX_TOKENS=800`. The 8B GPU model was seen looping forever: 200+ TTS calls.
+  - The fake-card nudge now also matches `confirm|पुष्टी|पुष्टि`. The GPU model said "Confirm बटण दाबा" 22 turns in a row without a card.
+- Web:
+  - `lib/voice/mic.ts`: Silero v5 VAD via `@ricky0123/vad-web` 0.0.31. Model, worklet and onnxruntime 1.30.0 load from jsdelivr, since a bundled build looks for them at `/`. Hands-free sends WAV; push-to-talk (pointer or Space/Enter) sends webm/opus via MediaRecorder.
+  - `player.ts`: WebAudio queue, `AnalyserNode` level, `stop()` for barge-in, drops late audio of interrupted messages.
+  - `useVoice.ts`: barge-in, plus client latency from speech end to the first audio heard.
+  - `LatencyOverlay` (dev or `?latency`).
+  - Avatar `listening` (leans in, ring follows mic level) and `speaking` (mouth/ring follow output amplitude).
+  - Chat composer: hold-to-talk + hands-free toggle.
+- `/health`: `sarvam_stt` / `sarvam_tts` breaker states (no `bhashini`). Test fixtures `client`/`sid` moved to `conftest.py`.
+
+**How verified**
+- pytest **119 passed**:
+  - splitter, normalisation, ID masking;
+  - STT fallback + breaker skip, timeout, all-down;
+  - Speaker order, failures → unavailable, flush, cap;
+  - WS voice turn: transcript → reply in detected `hi` → `tts_audio` + adjacent binary → metrics. The voice message is stored with `input_mode=voice, lang=hi`, and no transcript or audio appears in logs.
+  - Bad/oversized/stray audio, empty transcript;
+  - **interrupt cancels a streaming turn** (no assistant row stored);
+  - UI event spoken after voice, typed turn not spoken;
+  - nudge on "Confirm बटण".
+- ruff check and format clean. Web lint, typecheck, test and build pass.
+- `scripts/speech_smoke.py`: Sarvam TTS → STT round trip in mr/hi/en (STT 0.2–0.5 s, TTS 0.7–1.6 s). Kaggle `/asr` direct: 0.9–1.5 s warm, 5.7 s cold.
+- **Live voice onboarding** (scratchpad script, through the real `/ws` endpoint: Sarvam-spoken user answers → real STT → real LLM → real sentence TTS; in-memory store, card taps simulated):
+  - **Hindi**, Groq brain: 13 spoken turns → `phase=research, portal=mahadbt`, nothing missing, every voice message `lang=hi`. First audio median **1.86 s**, max 2.83 s (one 17 s outlier: Groq rate limit).
+  - **Marathi**, Groq brain: 11 spoken turns → `research/mahadbt`, all `mr`. First audio median **1.97 s**, max 3.58 s.
+  - **Marathi with `SARVAM_API_KEY=bad`**: full onboarding → `research/mahadbt`. Every STT served by `local_gpu` (1.2–3.5 s). Every sentence went to `tts_unavailable`, so the browser speaks. Breaker: 3 failures → skip, retried once per 60 s.
+  - Marathi, **Kaggle GPU brain**: first audio median 5.1 s (3.8–10.6 s; LLM first token 2–6 s on a T4 with tools). The model got stuck at `gender` (fixed by the wider nudge above, not re-run on GPU).
+- Chrome (`localhost:3000/chat/…`, local backend): page renders with hold-to-talk + hands-free buttons and the overlay. Hands-free on → "Hands-free on — just talk". Silero model + onnxruntime fetched from jsdelivr (wasm 5.4 s first load, cached after). Mic released when toggled off.
+
+**Open issues**
+- **Manual mic checks (user):** a spoken onboarding in Marathi and Hindi in Chrome, the overlay "First audio (heard)" ≤ 3 s, and barge-in. Talk over Aster; the playback stop runs synchronously in the VAD `onSpeechStart` callback (Silero v5 frames are 32 ms), and the console logs `[aster-voice] barge-in…`. Use headphones: echo cancellation is on, but speaker audio can still trigger barge-in.
+- **Brain choice decides the ≤ 3 s budget:** Groq ≈ 2 s; the Kaggle T4 ≈ 5 s and was less reliable at tool calls. Groq's free tier (7 k input tokens/min, about 3 turns/min) 429s in fast conversations; the live runs were paced 20 s/turn. For the demo, either a paid/other fallback org or accept GPU latency.
+- A nudged turn speaks (and shows) both the wrong "tap Confirm" sentence and the corrected one (M3 behaviour, now audible).
+- STT mistakes seen: "बी ई" heard as "भी" (Hindi), so `current_course` became "Computer". The confirm card catches it, but a `keyterms` list (saaras:v4) with course names would help.
+- The interrupted (barged-in) reply is not stored in history.
+- jsdelivr is a runtime dependency for the VAD; self-host the assets under `web/public/vad/` if the demo network is flaky.
+- Render: blank `SARVAM_*_MODEL` vars fall back to the config defaults (`env_ignore_empty`); the old `BHASHINI_*` vars can be deleted in the dashboard.
+
+### 2026-10-03 · M4 follow-up: language toggle
+- **Bug (user click-through):** switching the reply language had no effect until the user asked aloud. Cause: voice turns set the reply language from the STT-detected language, overriding the toggle; and with Marathi history, even a correct system prompt lost (Groq qwen replied in Marathi to "Reply in Hindi only", once claiming in Marathi that it answers only in Hindi).
+- **Fix:** reply language = the toggle (`hello.lang`) for every turn; the detected language is still stored on the user's message. The LLM request appends a target-language note to the newest user turn (`i18n reply_in`, e.g. "कृपया अब से केवल हिंदी में जवाब दें, मराठी में नहीं।"); stored messages are unchanged. System prompt: "Reply only in {lang} … even if earlier messages use another language".
+- **Verified:** live Groq, Marathi history + Marathi speech, toggle Hindi → Hindi 4/4 (2 more runs were rate-limit apologies, also in Hindi); toggle English → English. An English-worded note was flaky for Hindi; a bracketed note once produced "[assistant turn 4]". pytest 120 passed (new: note only on the latest user turn, stored text/lang untouched, reply lang = toggle).

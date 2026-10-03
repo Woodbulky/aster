@@ -34,15 +34,16 @@ class Settings(BaseSettings):
     fallback_llm_api_key: str = ""
     fallback_llm_model: str = ""
 
-    # speech
+    # speech: Sarvam primary, Kaggle /asr as the STT fallback (no Bhashini credentials)
     sarvam_api_key: str = ""
-    sarvam_stt_model: str = ""
-    sarvam_tts_model: str = ""
-    sarvam_tts_voice_mr: str = ""
-    sarvam_tts_voice_hi: str = ""
-    sarvam_tts_voice_en: str = ""
-    bhashini_user_id: str = ""
-    bhashini_ulca_api_key: str = ""
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    sarvam_stt_model: str = "saaras:v4"
+    sarvam_tts_model: str = "bulbul:v3"
+    sarvam_tts_voice_mr: str = "priya"
+    sarvam_tts_voice_hi: str = "priya"
+    sarvam_tts_voice_en: str = "priya"
+    stt_timeout_s: float = 6.0
+    tts_timeout_s: float = 5.0
 
     # research
     tavily_api_key: str = ""

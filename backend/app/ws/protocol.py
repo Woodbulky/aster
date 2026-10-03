@@ -1,5 +1,5 @@
 """WS messages (docs/API.md). Mirrored in web/src/lib/ws/protocol.ts — change both together.
-Voice/screen messages arrive with M4/M7."""
+Screen messages arrive with M7."""
 
 from typing import Annotated, Any, Literal
 
@@ -35,7 +35,28 @@ class Ping(_In):
     type: Literal["ping"]
 
 
-ClientMsg = TypeAdapter(Annotated[Hello | UserText | UiEvent | Ping, Field(discriminator="type")])
+class AudioStart(_In):
+    """Followed by ONE binary frame (the utterance) and then audio_end."""
+
+    type: Literal["audio_start"]
+    mime: Annotated[str, StringConstraints(max_length=60)]
+    lang_hint: Lang | None = None
+
+
+class AudioEnd(_In):
+    type: Literal["audio_end"]
+
+
+class Interrupt(_In):
+    type: Literal["interrupt"]
+
+
+ClientMsg = TypeAdapter(
+    Annotated[
+        Hello | UserText | UiEvent | Ping | AudioStart | AudioEnd | Interrupt,
+        Field(discriminator="type"),
+    ]
+)
 
 
 class FormSelected(_In):
@@ -69,6 +90,40 @@ class AssistantMessage(BaseModel):
     message_id: str
     text: str
     lang: Lang
+
+
+class TranscriptMsg(BaseModel):
+    type: Literal["transcript"] = "transcript"
+    text: str
+    lang: Lang
+    provider: str
+
+
+class TtsAudio(BaseModel):
+    """The next binary frame is the audio."""
+
+    type: Literal["tts_audio"] = "tts_audio"
+    message_id: str
+    seq: int
+    mime: str
+
+
+class TtsUnavailable(BaseModel):
+    type: Literal["tts_unavailable"] = "tts_unavailable"
+    message_id: str
+    seq: int
+    text: str
+    lang: Lang
+
+
+class TurnMetrics(BaseModel):
+    """ms per stage, measured from the end of the user's utterance (dev overlay)."""
+
+    type: Literal["turn_metrics"] = "turn_metrics"
+    stt_ms: int | None = None
+    llm_first_token_ms: int | None = None
+    first_audio_ms: int | None = None
+    stt_provider: str | None = None
 
 
 class ToolEvent(BaseModel):

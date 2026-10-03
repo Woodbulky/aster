@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from app.agent import orchestrator
+from app.agent.prompts import t
 from app.agent.tools import Ctx, run_tool
 from app.config import Settings
 from app.llm.client import Chunk, LLMUnavailable
@@ -219,13 +220,33 @@ def test_ui_event_goes_to_model_as_user_note(store: FakeStore, run) -> None:
     assert store.messages[0]["role"] == "system" and store.messages[0]["input_mode"] == "ui"
     assert llm.calls[0]["messages"][-1] == {
         "role": "user",
-        "content": "[UI event] The user confirmed the profile card.",
+        "content": "[UI event] The user confirmed the profile card.\n\n" + t("mr", "reply_in"),
     }
 
 
-def test_claimed_card_without_tool_gets_one_nudge(store: FakeStore, run) -> None:
+def test_reply_language_note_on_latest_user_turn_only(store: FakeStore, run) -> None:
+    """The toggle switched to Hindi while the history is Marathi: the request carries a Hindi
+    note on the newest user turn; nothing stored is changed."""
+    store.messages.append({"id": "h1", "session_id": "s1", "role": "user", "content": "नमस्कार"})
+    llm = FakeLLM(text("नमस्ते!"))
+    run(llm, ctx(store, lang="hi"), user_text="माझं नाव आरव आहे.", input_mode="voice", user_lang="mr")
+    users = [m["content"] for m in llm.calls[0]["messages"] if m["role"] == "user"]
+    assert users == ["नमस्कार", "माझं नाव आरव आहे.\n\n" + t("hi", "reply_in")]
+    stored = store.messages[-2]  # the user's turn, then the reply
+    assert (stored["content"], stored["lang"]) == ("माझं नाव आरव आहे.", "mr")
+    assert store.messages[-1]["lang"] == "hi"
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "SSC: 2023. Please check the card and tap Confirm.",
+        'तुमचं वर्ष पुष्टी करा आणि "Confirm" बटण दाबा.',
+    ],
+)
+def test_claimed_card_without_tool_gets_one_nudge(store: FakeStore, run, claim: str) -> None:
     llm = FakeLLM(
-        text("SSC: 2023. Please check the card and tap Confirm."),
+        text(claim),
         call("propose_profile_update", {"updates": {"ssc_year": 2023}}),
         text("Card ready."),
     )

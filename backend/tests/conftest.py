@@ -1,13 +1,14 @@
 import pytest
+from fastapi.testclient import TestClient
 
-from app.llm import client
+from app.llm import client as llm_client
 
 
 @pytest.fixture(autouse=True)
 def _fresh_llm_state() -> None:
     """Module-level discovery cache and breakers must not leak between tests."""
-    client.reset_discovery()
-    client.breakers.update(gpu=client.Breaker(), fallback=client.Breaker())
+    llm_client.reset_discovery()
+    llm_client.breakers.update(gpu=llm_client.Breaker(), fallback=llm_client.Breaker())
 
 
 class FakeStore:
@@ -132,3 +133,32 @@ COMPLETE_PROFILE = {
     "current_course": "B.E. Computer",
     "current_year": 2,
 }
+
+
+@pytest.fixture
+def client(store: FakeStore, monkeypatch: pytest.MonkeyPatch):
+    from types import SimpleNamespace
+
+    from app.agent import orchestrator
+    from app.db.supabase import get_db
+    from app.main import app
+    from tests.test_agent import FakeLLM
+    from tests.test_api import get_user
+
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        auth=SimpleNamespace(get_user=get_user)
+    )
+    llm = FakeLLM()
+    monkeypatch.setattr(orchestrator, "chat_stream", llm)
+    try:
+        yield TestClient(app), llm
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def sid(store: FakeStore) -> str:
+    """FakeStore keys sessions by id; give s1 a UUID id for the path."""
+    u = "00000000-0000-0000-0000-0000000000aa"
+    store.sessions[u] = {**store.sessions.pop("s1"), "id": u}
+    return u

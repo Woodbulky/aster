@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, motionValue, type MotionValue, useReducedMotion, useTransform } from "framer-motion";
 import { useEffect, useId, useState } from "react";
 
 type AvatarSpec = {
@@ -28,9 +28,22 @@ const center = { transformBox: "fill-box", transformOrigin: "center" } as const;
 
 export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
 
+const silent = motionValue(0);
+
 /** Soft orb with a face. Idle: slow breathe + a blink every 3–6 s. Thinking: eyes glance up and
- * the breathe quickens. Happy: a little hop and a wider smile. Listening/speaking arrive with voice (M4). */
-export function Avatar({ id, size = 128, state = "idle" }: { id: string; size?: number; state?: AvatarState }) {
+ * the breathe quickens. Happy: a little hop and a wider smile. Listening: leans in, the ring pulses
+ * with the mic level. Speaking: the mouth and ring follow the voice amplitude. `level` is 0..1. */
+export function Avatar({
+  id,
+  size = 128,
+  state = "idle",
+  level = silent,
+}: {
+  id: string;
+  size?: number;
+  state?: AvatarState;
+  level?: MotionValue<number>;
+}) {
   const spec: AvatarSpec = AVATARS[isAvatarId(id) ? id : "aster"];
   const reduce = useReducedMotion();
   const gid = useId();
@@ -54,6 +67,10 @@ export function Avatar({ id, size = 128, state = "idle" }: { id: string; size?: 
 
   const thinking = state === "thinking";
   const happy = state === "happy";
+  const listening = state === "listening";
+  const speaking = state === "speaking";
+  const ringScale = useTransform(level, [0, 1], [1, 1.14]);
+  const mouthOpen = useTransform(level, [0, 1], [1, 4.5]);
   const loop = { duration: thinking ? 2.2 : 5, repeat: Infinity, ease: "easeInOut" } as const;
 
   return (
@@ -70,10 +87,30 @@ export function Avatar({ id, size = 128, state = "idle" }: { id: string; size?: 
         </radialGradient>
       </defs>
       <circle cx={60} cy={64} r={58} fill={`url(#${gid}h)`} />
+      {(listening || speaking) && (
+        <motion.circle
+          cx={60}
+          cy={60}
+          r={52}
+          fill="none"
+          stroke={spec.dark}
+          strokeWidth={2.5}
+          opacity={0.45}
+          style={{ ...center, scale: reduce ? 1 : ringScale }}
+        />
+      )}
       <motion.g
         style={center}
-        animate={reduce ? undefined : happy ? { scale: [1, 1.07, 1], y: [0, -7, 0] } : { scale: [1, 1.035, 1], y: [0, -1.5, 0] }}
-        transition={happy ? { duration: 0.6, repeat: 2, ease: "easeOut" } : loop}
+        animate={
+          reduce
+            ? undefined
+            : happy
+              ? { scale: [1, 1.07, 1], y: [0, -7, 0] }
+              : listening
+                ? { scale: 1.05, y: 2 } // leans in
+                : { scale: [1, 1.035, 1], y: [0, -1.5, 0] }
+        }
+        transition={happy ? { duration: 0.6, repeat: 2, ease: "easeOut" } : listening ? { duration: 0.25 } : loop}
       >
         <ellipse cx={60} cy={60} rx={47} ry={46} fill={`url(#${gid}b)`} />
         <ellipse cx={42} cy={34} rx={13} ry={7} fill="#fff" opacity={0.18} transform="rotate(-30 42 34)" />
@@ -91,7 +128,11 @@ export function Avatar({ id, size = 128, state = "idle" }: { id: string; size?: 
         </motion.g>
         {spec.cheeks &&
           [38, 82].map((cx) => <ellipse key={cx} cx={cx} cy={70} rx={5.5} ry={3} fill="#f6a99b" opacity={0.45} />)}
-        <path d={happy ? "M53 72 Q60 80 67 72" : "M55 73 Q60 77.5 65 73"} stroke={spec.eye} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.7} />
+        {speaking ? (
+          <motion.ellipse cx={60} cy={74} rx={5} ry={mouthOpen} fill={spec.eye} opacity={0.7} />
+        ) : (
+          <path d={happy ? "M53 72 Q60 80 67 72" : "M55 73 Q60 77.5 65 73"} stroke={spec.eye} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.7} />
+        )}
       </motion.g>
     </svg>
   );

@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { accessToken, API_URL } from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
-import type { AgentStateName, Card, ClientMsg, ConfirmProfilePayload, ServerMsg, UiEventName } from "@/lib/ws/protocol";
+import { Player } from "@/lib/voice/player";
+import type { AgentStateName, Card, ClientMsg, ConfirmProfilePayload, ServerMsg, TurnMetrics, UiEventName } from "@/lib/ws/protocol";
 
 export type Item =
   | { kind: "msg"; id: string; role: "user" | "assistant"; text: string; lang: Lang; streaming?: boolean }
@@ -48,13 +49,16 @@ async function loadHistory(sessionId: string): Promise<Item[]> {
   return rows.sort((a, b) => a.at.localeCompare(b.at)).map((r) => r.item);
 }
 
-/** The conversation socket: hello on (re)connect, backoff up to 15 s, streaming merged into items. */
+/** The conversation socket: hello on (re)connect, backoff up to 15 s, streaming merged into items,
+ * Aster's voice queued on `player`. */
 export function useSessionSocket(sessionId: string, lang: Lang) {
   const [items, setItems] = useState<Item[]>([]);
   const [phase, setPhase] = useState<string | null>(null);
   const [agent, setAgent] = useState<{ state: AgentStateName; detail: string | null }>({ state: "idle", detail: null });
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<TurnMetrics | null>(null);
+  const [player] = useState(() => new Player());
   const ws = useRef<WebSocket | null>(null);
   const loaded = useRef(false);
 
@@ -63,6 +67,7 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     let retry = 0;
     let timer: number | undefined;
     let happyTimer: number | undefined;
+    let audioHeader: Extract<ServerMsg, { type: "tts_audio" }> | null = null; // the next binary frame
 
     const upsertAssistant = (id: string, f: (text: string) => string, done: boolean, l?: Lang) =>
       setItems((xs) => {
@@ -102,6 +107,22 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
           setItems((xs) => [...xs, { kind: "card", card: card as Card }]);
           break;
         }
+        case "transcript":
+          setItems((xs) => [...xs, { kind: "msg", id: crypto.randomUUID(), role: "user", text: m.text, lang: m.lang }]);
+          setError(null);
+          break;
+        case "tts_audio":
+          audioHeader = m;
+          break;
+        case "tts_unavailable":
+          player.enqueueText(m.message_id, m.text, m.lang);
+          break;
+        case "turn_metrics": {
+          const { type: _type, ...rest } = m;
+          void _type;
+          setMetrics(rest);
+          break;
+        }
         case "error":
           setError(m.message);
           break;
@@ -121,7 +142,15 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
       const sock = new WebSocket(`${API_URL.replace(/^http/, "ws")}/ws/session/${sessionId}`);
       ws.current = sock;
       sock.onopen = () => sock.send(JSON.stringify({ type: "hello", token, lang } satisfies ClientMsg));
-      sock.onmessage = (e) => handle(JSON.parse(e.data as string) as ServerMsg);
+      sock.binaryType = "arraybuffer";
+      sock.onmessage = (e) => {
+        if (typeof e.data !== "string") {
+          if (audioHeader) player.enqueueAudio(audioHeader.message_id, e.data as ArrayBuffer);
+          audioHeader = null;
+          return;
+        }
+        handle(JSON.parse(e.data) as ServerMsg);
+      };
       sock.onclose = (e) => {
         if (ws.current === sock) ws.current = null;
         if (closed) return;
@@ -138,10 +167,13 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
       setStatus("connecting"); // the next effect run (language switch) opens a fresh socket
       window.clearTimeout(timer);
       window.clearTimeout(happyTimer);
+      player.stop();
       ws.current?.close();
       ws.current = null;
     };
-  }, [sessionId, lang]); // a language switch reconnects with the new hello.lang
+  }, [sessionId, lang, player]); // a language switch reconnects with the new hello.lang
+
+  useEffect(() => () => player.close(), [player]);
 
   const send = useCallback((msg: ClientMsg) => {
     if (ws.current?.readyState !== WebSocket.OPEN) {
@@ -165,5 +197,21 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     [send],
   );
 
-  return { items, phase, agent, status, error, sendText, sendUi };
+  /** One utterance: header, ONE binary frame, end (docs/API.md). */
+  const sendAudio = useCallback(
+    (audio: ArrayBuffer, mime: string) => {
+      if (!send({ type: "audio_start", mime, lang_hint: lang })) return false;
+      ws.current!.send(audio);
+      return send({ type: "audio_end" });
+    },
+    [send, lang],
+  );
+
+  /** Barge-in: silence Aster now and cancel the turn on the server. */
+  const interrupt = useCallback(() => {
+    player.stop();
+    send({ type: "interrupt" });
+  }, [send, player]);
+
+  return { items, phase, agent, status, error, metrics, player, sendText, sendUi, sendAudio, interrupt };
 }

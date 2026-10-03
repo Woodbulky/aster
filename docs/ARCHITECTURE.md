@@ -32,8 +32,8 @@ External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-
 |---|---|---|
 | LLM chat/tools | Kaggle `/v1` → `FALLBACK_LLM_*` (OpenAI-compatible) | first token 8 s |
 | Vision (docs/screen) | Kaggle `/v1` (qwen3-vl) → fallback LLM (must be vision-capable) | 20 s |
-| STT | Sarvam → Bhashini → Kaggle `/asr` (hi/mr only) | 6 s |
-| TTS | Sarvam → Bhashini → client `speechSynthesis` (send text-only event) | 5 s |
+| STT | Sarvam → Kaggle `/asr` (hi/mr only; used even when `LLM_PRIMARY=fallback`) | 6 s |
+| TTS | Sarvam → client `speechSynthesis` (`tts_unavailable` text-only event) | 5 s |
 | OCR | Kaggle `/ocr` → fallback vision LLM asked for lines (no bbox; mark `bbox=null`) | 30 s |
 | Search | Tavily → knowledge pack only | 10 s |
 

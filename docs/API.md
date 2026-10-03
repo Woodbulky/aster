@@ -5,7 +5,7 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 ## REST (`/api`)
 | Method | Path | Body → Result |
 |---|---|---|
-| GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam/bhashini/tavily: configured\|missing}`, version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
+| GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam/tavily: configured\|missing, sarvam_stt/sarvam_tts: up\|open\|missing}`, version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
 | GET | `/api/me` | profile (masked) + assistant settings |
 | POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → `{status: accepted\|rejected, saved}`. Own pending proposals only (else 404). `edits` may only touch proposed keys; `""` = don't save that field. Kept values get `source_type` = the proposal's evidence + `source_ref {proposal_id, message_id}`; corrected values get `manual`. Audit `profile.confirmed`/`profile.rejected` with field names only |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |
@@ -26,8 +26,8 @@ Client → server (JSON unless noted):
 |---|---|
 | `hello` | `token, lang` |
 | `user_text` | `text` |
-| `audio_start` | `mime, lang_hint` → then ONE binary frame (audio) → `audio_end` |
-| `interrupt` | — |
+| `audio_start` | `mime, lang_hint?` → then ONE binary frame (audio, ≤ 2 MB) → `audio_end`. Errors: `bad_audio`, `no_speech`, `stt_unavailable` |
+| `interrupt` | — cancels the running turn (LLM + TTS); server answers `agent_state idle` |
 | `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {portal, scheme_key?}`; later: `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload`. `form_selected` calls `set_form` in code, not via the LLM |
 | `screen_frame` | `frame_id, reason` → then ONE binary frame (JPEG) |
 | `ping` | — |
@@ -42,6 +42,7 @@ Server → client:
 | `assistant_message` | `message_id, text, lang` (final) |
 | `tts_audio` | `message_id, seq, mime` + the next binary frame = audio |
 | `tts_unavailable` | `message_id, seq, text, lang` (client uses speechSynthesis) |
+| `turn_metrics` | `stt_ms, llm_first_token_ms, first_audio_ms, stt_provider` — voice turns, ms from the end of the utterance (dev overlay) |
 | `tool_event` | `name, status: started\|done\|failed, label` |
 | `card` | `card_id, kind, payload` |
 | `phase` | `phase` |

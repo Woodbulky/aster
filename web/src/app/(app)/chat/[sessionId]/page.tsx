@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ArrowUp, FileText, FolderOpen, GraduationCap, Loader2, Mic, MonitorSmartphone, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, ArrowUp, AudioLines, FileText, FolderOpen, GraduationCap, Loader2, Mic, MicOff, MonitorSmartphone, ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -9,10 +9,12 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { ConfirmProfileCard } from "@/components/cards/ConfirmProfileCard";
 import { SchemeSuggestionsCard } from "@/components/cards/SchemeSuggestionsCard";
 import { completion } from "@/components/profile/ProfileForm";
+import { LatencyOverlay } from "@/components/voice/LatencyOverlay";
 import { useShell } from "@/components/shell/AppShell";
 import { putAssistant, useAssistant } from "@/lib/api";
 import { LANGS, type Lang } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useVoice } from "@/lib/voice/useVoice";
 import { type Status, useSessionSocket } from "@/lib/ws/client";
 
 const PROMPTS = [
@@ -45,7 +47,8 @@ export default function ChatSessionPage() {
   const { profile } = useShell();
   const assistant = useAssistant();
   const lang = (LANGS.some((l) => l.id === assistant.language) ? assistant.language : "en") as Lang;
-  const { items, phase, agent, status, error, sendText, sendUi } = useSessionSocket(sessionId, lang);
+  const { items, phase, agent, status, error, metrics, player, sendText, sendUi, sendAudio, interrupt } = useSessionSocket(sessionId, lang);
+  const voice = useVoice({ player, sendAudio, interrupt });
   const [input, setInput] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
@@ -55,6 +58,9 @@ export default function ChatSessionPage() {
 
   const busy = agent.state === "thinking";
   const canSend = status === "open" && !busy;
+  // Local mic/playback beat the server's state: they change the instant the user or Aster talks.
+  const avatarState = voice.listening ? "listening" : voice.aiSpeaking ? "speaking" : agent.state;
+  const avatarLevel = voice.listening ? voice.micLevel : player.level;
 
   function send(text: string) {
     const t = text.trim();
@@ -71,7 +77,7 @@ export default function ChatSessionPage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {/* Conversation header */}
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-8">
-          <Avatar id={assistant.avatar_id} size={40} state={agent.state} />
+          <Avatar id={assistant.avatar_id} size={40} state={avatarState} level={avatarLevel} />
           <div className="min-w-0">
             <strong className="block leading-tight">{assistant.assistant_name}</strong>
             <small role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -107,7 +113,7 @@ export default function ChatSessionPage() {
                   <span aria-hidden className="absolute top-6 left-4 text-xl text-[#9db58a]">✧</span>
                   <span aria-hidden className="absolute right-5 bottom-8 text-base text-[#d3a37c]">✦</span>
                   <div className="relative">
-                    <Avatar id={assistant.avatar_id} size={150} state={agent.state} />
+                    <Avatar id={assistant.avatar_id} size={150} state={avatarState} level={avatarLevel} />
                   </div>
                 </div>
                 <h1 className="mt-6 text-3xl font-bold sm:text-4xl">Hi, I&apos;m {assistant.assistant_name}.</h1>
@@ -187,9 +193,9 @@ export default function ChatSessionPage() {
 
         {/* Composer */}
         <div className="border-t border-border bg-background px-4 pt-4 pb-5 sm:px-8">
-          {error && (
+          {(error || voice.micError) && (
             <p role="alert" className="mx-auto mb-2 max-w-3xl text-sm text-destructive">
-              {error}
+              {voice.micError ?? error}
             </p>
           )}
           <form
@@ -215,10 +221,44 @@ export default function ChatSessionPage() {
               className="block max-h-48 w-full resize-none bg-transparent px-3 py-2 text-base leading-relaxed outline-none placeholder:text-[#8a9387]"
             />
             <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                {voice.handsFree ? (voice.listening ? "Listening…" : "Hands-free on — just talk") : "Enter to send · Shift+Enter for a new line"}
+              </span>
               <div className="flex items-center gap-2">
-                <button type="button" disabled title="Voice arrives in the next update" aria-label="Talk (coming soon)" className="btn-ghost size-11 rounded-full p-0">
-                  <Mic className="size-5" />
+                <button
+                  type="button"
+                  disabled={status !== "open"}
+                  aria-label="Hold to talk"
+                  title="Hold to talk (for noisy rooms)"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    void voice.pressStart();
+                  }}
+                  onPointerUp={voice.pressEnd}
+                  onPointerCancel={voice.pressEnd}
+                  onKeyDown={(e) => {
+                    if ((e.key === " " || e.key === "Enter") && !e.repeat) {
+                      e.preventDefault();
+                      void voice.pressStart();
+                    }
+                  }}
+                  onKeyUp={(e) => {
+                    if (e.key === " " || e.key === "Enter") voice.pressEnd();
+                  }}
+                  className={cn("btn-ghost size-11 touch-none rounded-full p-0 select-none", voice.pressing && "bg-sage text-primary")}
+                >
+                  <AudioLines className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={status !== "open" && !voice.handsFree}
+                  aria-pressed={voice.handsFree}
+                  aria-label={voice.handsFree ? "Turn hands-free voice off" : "Turn hands-free voice on"}
+                  title={voice.handsFree ? "Hands-free on: tap to turn the mic off" : "Talk hands-free"}
+                  onClick={() => void voice.toggleHandsFree()}
+                  className={cn("size-11 rounded-full p-0", voice.handsFree ? "btn-primary" : "btn-ghost")}
+                >
+                  {voice.handsFree ? <Mic className="size-5" /> : <MicOff className="size-5" />}
                 </button>
                 <button type="submit" disabled={!input.trim() || !canSend} aria-label="Send" className="btn-primary size-11 rounded-full p-0">
                   <ArrowUp className="size-5" />
@@ -231,6 +271,8 @@ export default function ChatSessionPage() {
           </p>
         </div>
       </section>
+
+      <LatencyOverlay server={metrics} firstAudioMs={voice.firstAudioMs} bargeInMs={voice.bargeInMs} />
 
       {/* Context panel (wide screens) */}
       <aside className="hidden w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border bg-sidebar/60 p-6 xl:flex">

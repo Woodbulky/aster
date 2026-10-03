@@ -1,30 +1,10 @@
 import pytest
-from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.agent import orchestrator
-from app.db.supabase import get_db
-from app.main import app
 from tests.conftest import COMPLETE_PROFILE, FakeStore
-from tests.test_agent import FakeLLM, text
-from tests.test_api import get_user
+from tests.test_agent import text
 
 HELLO = {"type": "hello", "token": "good", "lang": "mr"}
-
-
-@pytest.fixture
-def client(store: FakeStore, monkeypatch: pytest.MonkeyPatch):
-    from types import SimpleNamespace
-
-    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
-        auth=SimpleNamespace(get_user=get_user)
-    )
-    llm = FakeLLM()
-    monkeypatch.setattr(orchestrator, "chat_stream", llm)
-    try:
-        yield TestClient(app), llm
-    finally:
-        app.dependency_overrides.clear()
 
 
 def until(ws, type_: str) -> list[dict]:
@@ -51,14 +31,6 @@ def test_rejects(client, path: str, first: dict, code: int) -> None:
         with pytest.raises(WebSocketDisconnect) as e:
             ws.receive_json()
         assert e.value.code == code
-
-
-@pytest.fixture
-def sid(store: FakeStore) -> str:
-    """FakeStore keys sessions by id; give s1 a UUID id for the path."""
-    u = "00000000-0000-0000-0000-0000000000aa"
-    store.sessions[u] = {**store.sessions.pop("s1"), "id": u}
-    return u
 
 
 def test_conversation(client, store: FakeStore, sid: str) -> None:

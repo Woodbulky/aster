@@ -23,7 +23,8 @@ def test_health() -> None:
             "gpu": "down",
             "llm_fallback": "missing",
             "sarvam": "missing",
-            "bhashini": "missing",
+            "sarvam_stt": "missing",
+            "sarvam_tts": "missing",
             "tavily": "missing",
         },
     }
@@ -35,7 +36,8 @@ def test_health_provider_states() -> None:
         "gpu": "up",
         "llm_fallback": "missing",
         "sarvam": "configured",
-        "bhashini": "missing",
+        "sarvam_stt": "up",
+        "sarvam_tts": "up",
         "tavily": "configured",
     }
     assert _health(llm_primary="fallback")["providers"]["gpu"] == "off"

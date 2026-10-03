@@ -8,7 +8,7 @@ Tick the box when its acceptance criteria are verified.
 - [x] M1 Supabase schema + auth + onboarding UI
 - [x] M2 Backend core (auth, LLM client, GPU discovery, health)
 - [x] M3 Text agent (WS, phases, onboarding + choose_form)
-- [ ] M4 Voice (VAD, STT/TTS router, avatar states, barge-in)
+- [x] M4 Voice (VAD, STT/TTS router, avatar states, barge-in)
 - [ ] M5 Research + eligibility (packs, live research, cards)
 - [ ] M6 Documents + verification (OCR, extraction, contradictions, rules)
 - [ ] M7 Guided form filling (screen share, PiP, guidance)

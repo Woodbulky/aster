@@ -47,19 +47,7 @@ services:
         sync: false
       - key: SARVAM_API_KEY
         sync: false
-      - key: SARVAM_STT_MODEL
-        sync: false
-      - key: SARVAM_TTS_MODEL
-        sync: false
-      - key: SARVAM_TTS_VOICE_MR
-        sync: false
-      - key: SARVAM_TTS_VOICE_HI
-        sync: false
-      - key: SARVAM_TTS_VOICE_EN
-        sync: false
-      - key: BHASHINI_USER_ID
-        sync: false
-      - key: BHASHINI_ULCA_API_KEY
-        sync: false
+      # SARVAM_STT_MODEL / _TTS_MODEL / _TTS_VOICE_* default in config.py (saaras:v4, bulbul:v3,
+      # priya); set them here only to override. No Bhashini (no credentials).
       - key: TAVILY_API_KEY
         sync: false

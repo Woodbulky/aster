@@ -28,7 +28,7 @@ Aster guides; the student decides and submits. Hackathon project — optimise fo
 - **backend/**: Python 3.12, FastAPI, pydantic v2, httpx, `supabase` py client, rapidfuzz, indic-transliteration, pymupdf, trafilatura. uv. Deployed on **Render** (free web service, region singapore, created manually in the dashboard; `render.yaml` mirrors its settings) at `https://aster-jj5b.onrender.com`; auto-deploys on push to `main`. Laptop for dev. The phone (Termux → proot Ubuntu, aarch64, Cloudflare tunnel) is an optional backup host only.
 - **Supabase** (cloud): Auth, Postgres, Storage, Realtime.
 - **GPU worker** (Kaggle 2×T4): one gateway with Bearer auth. `/v1/*` = OpenAI-compatible Ollama `qwen3-vl:8b-instruct` (chat, tools, vision). `/asr` = IndicConformer (hi/mr). `/ocr` = EasyOCR lines + bbox. The URL changes every session; the backend reads it from Supabase table `gpu_endpoints` (row `kaggle-main`, fresh if `last_seen` < 3 min).
-- **External APIs**: Sarvam (STT/TTS primary), Bhashini (fallback), Tavily (web search), a hosted OpenAI-compatible LLM as brain fallback.
+- **External APIs**: Sarvam (STT/TTS; STT falls back to Kaggle `/asr`, TTS to browser `speechSynthesis`), Tavily (web search), a hosted OpenAI-compatible LLM as brain fallback.
 
 ## Repo layout
 ```
@@ -42,7 +42,7 @@ backend/
   app/ws/voice.py     WebSocket conversation endpoint
   app/agent/          orchestrator.py phases.py tools/ prompts/
   app/llm/            client.py (GPU discovery + fallback), schemas.py
-  app/speech/         router.py sarvam.py bhashini.py local_gpu.py
+  app/speech/         router.py sarvam.py local_gpu.py sentences.py stream.py
   app/research/       search.py fetch.py pdf.py packs.py
   app/verify/         ocr.py extraction.py validator.py names.py rules_engine.py contradictions.py rules/*.json
   app/db/             supabase.py repositories
