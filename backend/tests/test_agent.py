@@ -1,4 +1,3 @@
-import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -8,7 +7,6 @@ import pytest
 from app.agent import orchestrator
 from app.agent.prompts import t
 from app.agent.tools import Ctx, run_tool
-from app.config import Settings
 from app.llm.client import Chunk, LLMUnavailable
 from tests.conftest import COMPLETE_PROFILE, FakeStore
 
@@ -40,24 +38,6 @@ class FakeLLM:
             raise r
         for ch in r:
             yield ch
-
-
-@pytest.fixture
-def run(store: FakeStore, monkeypatch: pytest.MonkeyPatch):
-    sent: list[Any] = []
-
-    async def send(m) -> None:
-        sent.append(m)
-
-    def go(llm: FakeLLM, c: Ctx | None = None, **kw) -> list[Any]:
-        monkeypatch.setattr(orchestrator, "chat_stream", llm)
-        turn = orchestrator.run_turn(
-            Settings(), c or ctx(store), send, assistant_name="Aster", **kw
-        )
-        asyncio.run(turn)
-        return sent
-
-    return go
 
 
 def kinds(sent: list[Any]) -> list[str]:
@@ -109,9 +89,9 @@ def test_propose_rejects(store: FakeStore, updates: dict) -> None:
 
 
 def test_tool_not_in_phase_is_refused(store: FakeStore) -> None:
-    res = run_tool(ctx(store), "set_form", {"portal": "mahadbt"})  # session is in onboarding
+    res = run_tool(ctx(store), "set_form", {"scheme_key": "demo.obc_aid"})  # in onboarding
     assert not res.ok and "not available" in res.error
-    assert store.sessions["s1"]["portal"] is None
+    assert store.sessions["s1"].get("scheme_key") is None
 
 
 def test_bad_json_args(store: FakeStore) -> None:
@@ -125,23 +105,54 @@ def test_explain_why_asked_uses_template(store: FakeStore) -> None:
     assert res.data["text"].startswith("I ask so")
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        {},  # neither
+        {"scheme_key": "demo.obc_aid", "scheme_name": "OBC Aid"},  # both
+        {"scheme_key": "demo.nope"},  # not a pack
+        {"scheme_key": "demo.draft_one"},  # draft packs are not offered in tests/prod
+        {"scheme_key": "demo.obc_aid", "portal_url": "https://evil.x"},  # URL never from the LLM
+        {"scheme_name": "ab"},  # too short to research
+    ],
+)
+def test_set_form_rejects(store: FakeStore, args: dict) -> None:
+    store.sessions["s1"]["phase"] = "choose_form"
+    assert not run_tool(ctx(store), "set_form", args).ok
+    assert store.audit == []
+
+
 def test_set_form(store: FakeStore) -> None:
     store.sessions["s1"]["phase"] = "choose_form"
-    assert not run_tool(ctx(store), "set_form", {"portal": "nsp"}).ok
-    res = run_tool(ctx(store), "set_form", {"portal": "MahaDBT", "portal_url": "https://evil.x"})
-    assert not res.ok  # extra args forbidden: the portal URL is never LLM-supplied
-    res = run_tool(ctx(store), "set_form", {"portal": "Maha DBT"})
+    res = run_tool(ctx(store), "set_form", {"scheme_key": "demo.obc_aid"})
     assert res.ok
-    assert store.sessions["s1"]["portal"] == "mahadbt"
-    assert store.sessions["s1"]["portal_url"] == "https://mahadbt.maharashtra.gov.in"
+    s = store.sessions["s1"]
+    assert (s["portal"], s["scheme_key"], s["scheme_name"]) == ("demo", "demo.obc_aid", "OBC Aid")
+    assert s["portal_url"] == "https://scholarships.demo.gov.in"  # from _portal.json
     assert store.audit[-1][0] == "form.set"
+    # any other scholarship: just the name, no URL until research finds one
+    res = run_tool(ctx(store), "set_form", {"scheme_name": "Tata Capital Pankh"})
+    assert res.ok and not res.data["known_rules"]
+    assert (s["scheme_key"], s["scheme_name"], s["portal_url"]) == (
+        None,
+        "Tata Capital Pankh",
+        None,
+    )
 
 
-def test_suggest_schemes_stub(store: FakeStore) -> None:
+def test_suggest_schemes_ranks_by_fit(store: FakeStore) -> None:
     store.sessions["s1"]["phase"] = "choose_form"
-    res = run_tool(ctx(store), "suggest_schemes", {"portal": "mahadbt"})
+    store.profile.update(COMPLETE_PROFILE)  # OBC, income 1.48 lakh, 12th 81.5%
+    res = run_tool(ctx(store), "suggest_schemes", {})
+    opts = res.card.payload["options"]
     assert res.card.kind == "scheme_suggestions"
-    assert res.card.payload["options"][0]["portal"] == "mahadbt"
+    assert [o["scheme_key"] for o in opts] == ["demo.obc_aid", "demo.open_merit"]  # no draft
+    assert (opts[0]["met"], opts[0]["not_met"], opts[0]["unknown"]) == (2, 0, 2)
+    assert (opts[1]["met"], opts[1]["not_met"]) == (1, 1)
+    store.profile["category"] = "Open"
+    opts = run_tool(ctx(store), "suggest_schemes", {}).card.payload["options"]
+    assert opts[0]["scheme_key"] == "demo.open_merit"
+    assert not run_tool(ctx(store), "suggest_schemes", {"portal": "nowhere"}).ok
 
 
 # ---------- orchestrator ----------
@@ -184,14 +195,14 @@ def test_onboarding_turn(store: FakeStore, run) -> None:
 
 def test_choose_form_to_research(store: FakeStore, run) -> None:
     store.profile.update(COMPLETE_PROFILE)
-    llm = FakeLLM(call("set_form", {"portal": "mahadbt"}), text("ठीक आहे!"))
-    sent = run(llm, user_text="MahaDBT")
+    llm = FakeLLM(call("set_form", {"scheme_key": "demo.obc_aid"}), text("ठीक आहे!"))
+    sent = run(llm, user_text="OBC Aid")
     # onboarding -> choose_form at the start of the turn, -> research after set_form
     assert [m.phase for m in sent if m.type == "phase"] == ["choose_form", "research"]
     assert store.sessions["s1"]["phase"] == "research"
     assert [a for a, _ in store.audit] == ["phase.changed", "form.set", "phase.changed"]
     assert "Current phase: research" in llm.calls[1]["messages"][0]["content"]
-    assert llm.calls[1]["tools"] is None  # research tools arrive in M5
+    assert "get_knowledge_pack" in {t["function"]["name"] for t in llm.calls[1]["tools"]}
     assert sent[-1].state == "happy"
 
 
@@ -220,7 +231,7 @@ def test_ui_event_goes_to_model_as_user_note(store: FakeStore, run) -> None:
     assert store.messages[0]["role"] == "system" and store.messages[0]["input_mode"] == "ui"
     assert llm.calls[0]["messages"][-1] == {
         "role": "user",
-        "content": "[UI event] The user confirmed the profile card.\n\n" + t("mr", "reply_in"),
+        "content": "[UI event] The user confirmed the profile card.",  # same language: no note
     }
 
 
@@ -235,6 +246,37 @@ def test_reply_language_note_on_latest_user_turn_only(store: FakeStore, run) -> 
     stored = store.messages[-2]  # the user's turn, then the reply
     assert (stored["content"], stored["lang"]) == ("माझं नाव आरव आहे.", "mr")
     assert store.messages[-1]["lang"] == "hi"
+
+
+def test_language_acknowledgements_are_dropped(store: FakeStore, run) -> None:
+    """Seen live: after a switch to Hindi every reply began "ठीक है, अब से मैं केवल हिंदी में ही
+    जवाब दूँगा।" and the model kept copying it from the history. It is removed from the history
+    the model sees and from the stored reply; normal sentences stay."""
+    ack = "ठीक है, अब से मैं केवल हिंदी में ही जवाब दूँगा।"
+    store.messages += [
+        {"id": "h1", "session_id": "s1", "role": "assistant", "content": f"{ack}\n\nआपका ज़िला?"},
+        {"id": "h2", "session_id": "s1", "role": "user", "content": "Thane"},
+        {"id": "h3", "session_id": "s1", "role": "assistant", "content": ack},
+    ]
+    llm = FakeLLM(text(f"{ack}\n\nआपकी कैटेगरी क्या है — Open, OBC, SC या ST?"))
+    sent = run(llm, ctx(store, lang="hi"), user_text="Hello.")
+    seen = [m["content"] for m in llm.calls[0]["messages"][1:]]
+    assert seen == ["आपका ज़िला?", "Thane", "Hello."]  # no note: nothing in another language
+    final = "आपकी कैटेगरी क्या है — Open, OBC, SC या ST?"
+    assert sent[-2].text == final and store.messages[-1]["content"] == final
+
+
+@pytest.mark.parametrize(
+    "text,kept",
+    [
+        ("Okay, I'll reply only in English. What is your district?", "What is your district?"),
+        ("ठीक आहे, आता मी फक्त मराठीत उत्तर देईन. तुमचा जिल्हा?", "तुमचा जिल्हा?"),
+        ("Income is ₹1.5 lakh. Is that right?", "Income is ₹1.5 lakh. Is that right?"),
+        ("I can help in English, Hindi or Marathi.", "I can help in English, Hindi or Marathi."),
+    ],
+)
+def test_strip_lang_ack(text: str, kept: str) -> None:
+    assert orchestrator.strip_lang_ack(text) == kept
 
 
 @pytest.mark.parametrize(
@@ -261,3 +303,54 @@ def test_card_mention_with_pending_card_is_fine(store: FakeStore, run) -> None:
     llm = FakeLLM(text("Please tap Confirm on the card above."))
     run(llm, user_text="ok")
     assert len(llm.calls) == 1  # a card is waiting: no nudge
+
+
+def test_promise_only_reply_switches_scheme(store: FakeStore, run) -> None:
+    """Seen live (eligibility step, Groq): "what about this Bajaj finserv scholarship" got three
+    "Let me check…" sentences and no tool call. The model is nudged and switches the scheme."""
+    store.profile.update(COMPLETE_PROFILE)
+    store.sessions["s1"].update(phase="eligibility", scheme_name="Reliance Foundation Scholarship")
+    store.research.append(
+        {"id": "r1", "session_id": "s1", "scheme": "Reliance Foundation Scholarship",
+         "kind": "eligibility", "items": []}
+    )  # fmt: skip
+    promise = "Let me check the official rules for Bajaj Finserv.\n\nLet me read the page."
+    llm = FakeLLM(
+        text(promise),
+        call("set_form", {"scheme_name": "Bajaj Finserv Scholarship"}),
+        # now in research: replies without saved research are nudged (at most twice)
+        text("Searching."),
+        text("Searching."),
+        text("I could not reach the official site; do you have a link?"),
+    )
+    sent = run(llm, user_text="what about this Bajaj finserv scholarship")
+    assert "called no tool" in llm.calls[1]["messages"][-1]["content"]
+    assert store.sessions["s1"]["scheme_name"] == "Bajaj Finserv Scholarship"
+    assert [m.phase for m in sent if m.type == "phase"] == ["research"]
+    assert sent[-2].text == "I could not reach the official site; do you have a link?"
+    assert "Let me" not in store.messages[-1]["content"]
+
+
+@pytest.mark.parametrize(
+    "text,only",
+    [
+        ("Let me check the rules.\n\nI'll read the page.", True),
+        ("मैं नियम देखती हूँ।", True),
+        ("Per the official rules, 3 of 6 criteria look met. Let me know if you want more.", False),
+        ("Your profile is ready!", False),
+    ],
+)
+def test_promise_only(text: str, only: bool) -> None:
+    assert orchestrator.promise_only(text) is only
+
+
+def test_history_drops_promises() -> None:
+    rows = [
+        {"role": "assistant", "content": "Let me check the rules.\n\nLet me read the page."},
+        {"role": "user", "content": "ok"},
+        {"role": "assistant", "content": "Let me check. 3 of 6 criteria look met."},
+    ]
+    assert orchestrator._history(rows) == [
+        {"role": "user", "content": "ok"},
+        {"role": "assistant", "content": "3 of 6 criteria look met."},
+    ]

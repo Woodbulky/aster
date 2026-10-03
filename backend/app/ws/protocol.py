@@ -62,8 +62,8 @@ ClientMsg = TypeAdapter(
 class FormSelected(_In):
     """ui_event form_selected payload (tap on a scheme_suggestions card)."""
 
-    portal: Annotated[str, StringConstraints(max_length=50)]
-    scheme_key: Annotated[str, StringConstraints(max_length=100)] | None = None
+    portal: Annotated[str, StringConstraints(max_length=50)] | None = None  # informational
+    scheme_key: Annotated[str, StringConstraints(min_length=1, max_length=100)]
 
 
 # ---------- server -> client ----------

@@ -129,6 +129,38 @@ def set_proposal_status(db: Client, user_id: str, proposal_id: str, status: str)
     q.eq("user_id", user_id).eq("status", "pending").execute()
 
 
+# ---------- research ----------
+def add_fetched(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
+    row = {**values, "user_id": user_id, "session_id": session_id}
+    return _one(db.table("fetched_content").insert(row).execute().data)
+
+
+def get_fetched(db: Client, user_id: str, session_id: str, content_id: str) -> Row | None:
+    q = db.table("fetched_content").select("*").eq("id", content_id).eq("user_id", user_id)
+    return _one(q.eq("session_id", session_id).limit(1).execute().data)
+
+
+def find_fetched(db: Client, user_id: str, session_id: str, url: str) -> Row | None:
+    q = db.table("fetched_content").select("*").eq("url", url).eq("user_id", user_id)
+    q = q.eq("session_id", session_id).order("fetched_at", desc=True).limit(1)
+    return _one(q.execute().data)
+
+
+def add_research(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
+    row = {**values, "user_id": user_id, "session_id": session_id}
+    return _one(db.table("research_results").insert(row).execute().data)
+
+
+def latest_research(
+    db: Client, user_id: str, session_id: str, scheme: str, kind: str | None = None
+) -> Row | None:
+    q = db.table("research_results").select("*").eq("session_id", session_id)
+    q = q.eq("user_id", user_id).eq("scheme", scheme)
+    if kind:
+        q = q.eq("kind", kind)
+    return _one(q.order("created_at", desc=True).limit(1).execute().data)
+
+
 # ---------- audit ----------
 def write_audit(
     db: Client,

@@ -30,9 +30,27 @@ CORE_FIELDS: tuple[str, ...] = (
     "current_year",
 )
 
+# suggest_schemes + set_form stay available after choose_form so the user can switch schemes;
+# the phase then follows the new scheme's research state.
+PICK = ("suggest_schemes", "set_form")
 TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     "onboarding": ("get_profile", "propose_profile_update", "explain_why_asked"),
-    "choose_form": ("get_profile", "list_supported_forms", "suggest_schemes", "set_form"),
+    "choose_form": ("get_profile", "list_supported_forms", *PICK),
+    "research": (
+        "get_knowledge_pack",
+        "search_web",
+        "fetch_url",
+        "read_pdf",
+        "save_research",
+        *PICK,
+    ),
+    "eligibility": (
+        "check_eligibility",
+        "get_profile",
+        "propose_profile_update",
+        "fetch_url",
+        *PICK,
+    ),
 }
 
 
@@ -41,12 +59,22 @@ def missing_core(profile: dict[str, Any] | None) -> list[str]:
     return [k for k in CORE_FIELDS if p.get(k) in (None, "")]
 
 
-def next_phase(session: dict[str, Any], profile: dict[str, Any] | None) -> Phase:
-    """Phase the session should be in now. Only moves forward out of the M3 phases; later phases
-    own their own exits (M5+)."""
+def scheme_of(session: dict[str, Any]) -> str | None:
+    """The chosen scheme: a pack key, or the name of a scheme without a pack (live research)."""
+    return session.get("scheme_key") or session.get("scheme_name")
+
+
+def next_phase(
+    session: dict[str, Any], profile: dict[str, Any] | None, has_research: bool = False
+) -> Phase:
+    """Phase the session should be in now. has_research = research is saved for the current
+    scheme. research <-> eligibility follows it both ways (switching scheme = research again);
+    later phases own their own exits (M6+)."""
     phase: Phase = session["phase"]
+    if phase in ("research", "eligibility"):
+        return "eligibility" if has_research else "research"
     if phase not in ("onboarding", "choose_form"):
         return phase
     if missing_core(profile):
         return phase  # never back from choose_form to onboarding on its own
-    return "research" if session.get("portal") else "choose_form"
+    return "research" if scheme_of(session) else "choose_form"

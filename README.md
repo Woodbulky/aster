@@ -1,6 +1,6 @@
 # Aster
 
-A multilingual voice + chat assistant that helps students research, verify, and fill government application forms (demo: MahaDBT).
+A multilingual voice + chat assistant that helps students research, verify, and fill government application forms (any scholarship; verified rule packs for MahaDBT, NSP and LIC).
 
 **Start here:** `docs/SETUP_GUIDE.md`. Then open Claude Code in this folder and run `/status`, then `/milestone M0`.
 

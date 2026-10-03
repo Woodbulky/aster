@@ -1,0 +1,47 @@
+{
+  "scheme_key": "demo.obc_aid",
+  "portal": "demo",
+  "status": "verified",
+  "verified_by": "test",
+  "verified_on": "2026-10-03",
+  "name": { "en": "OBC Aid", "mr": "ओबीसी मदत", "hi": "" },
+  "department": "Demo dept",
+  "official_urls": ["https://scholarships.demo.gov.in/obc"],
+  "summary": { "en": "Aid for OBC students." },
+  "criteria": [
+    {
+      "id": "obc", "text": { "en": "Belongs to OBC" },
+      "logic": { "==": [{ "var": "profile.category" }, "OBC"] },
+      "ask_if_unknown": { "field_key": "category" },
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "Applicant should belong to OBC category." }
+    },
+    {
+      "id": "income", "text": { "en": "Income up to 2.5 lakh" },
+      "logic": { "<=": [{ "var": "profile.annual_family_income" }, 250000] },
+      "ask_if_unknown": { "field_key": "annual_family_income" },
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "Family income should be up to Rs. 2.50 lakh." }
+    },
+    {
+      "id": "domicile", "text": { "en": "Resident of Maharashtra" },
+      "logic": { "==": [{ "var": "profile.domicile_state" }, "Maharashtra"] },
+      "ask_if_unknown": { "field_key": "domicile_state" },
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "Applicants must be residents of Maharashtra." }
+    },
+    {
+      "id": "attendance", "text": { "en": "75% attendance" }, "logic": null,
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "75 % attendance is mandatory." }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "income_certificate", "required": true, "text": { "en": "Income certificate" },
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "Income certificate issued by competent authority." }
+    }
+  ],
+  "deadlines": [
+    {
+      "label": { "en": "Last date" }, "date": "2020-01-31",
+      "source": { "url": "https://scholarships.demo.gov.in/obc", "quote": "Last date is 31.01.2020." }
+    }
+  ]
+}

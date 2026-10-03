@@ -1,118 +1,155 @@
-import json
-from functools import cache
-from pathlib import Path
-from typing import Any
+"""Choosing a scholarship: any scheme. Schemes with a knowledge pack are ranked against the
+profile; anything else is researched live (RESEARCH.md)."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.agent.tools import Card, Ctx, ToolResult, register
+from app.agent.tools.eligibility import counts, evaluate_pack
 from app.db import supabase as repo
+from app.research.packs import portals, usable_packs
 
-KNOWLEDGE = Path(__file__).resolve().parents[4] / "knowledge"
-SUPPORTED_PORTALS: dict[str, dict[str, str]] = {
-    "mahadbt": {
-        "name": "MahaDBT Scholarships (Maharashtra)",
-        "url": "https://mahadbt.maharashtra.gov.in",
-    },
-}
-
-
-@cache
-def verified_packs(portal: str) -> dict[str, dict[str, Any]]:
-    """scheme_key -> pack, verified packs only (knowledge/README.md). Missing folder = none."""
-    out: dict[str, dict[str, Any]] = {}
-    for f in sorted((KNOWLEDGE / portal).glob("[!_]*.json")):
-        pack = json.loads(f.read_text(encoding="utf-8"))
-        if pack.get("status") == "verified":
-            out[pack["scheme_key"]] = pack
-    return out
-
-
-def _portal(raw: str) -> str | None:
-    key = raw.strip().lower().replace(" ", "")
-    return key if key in SUPPORTED_PORTALS else None
-
-
-def _name(pack: dict[str, Any], lang: str) -> str:
-    return pack["name"].get(lang) or pack["name"]["en"]
+MAX_OPTIONS = 6
+SUGGEST_NOTE = (
+    "Ranked by how many official criteria your profile meets. Not a decision: the scheme "
+    "authority decides. Another scholarship? Just tell me its name."
+)
 
 
 @register(
     "list_supported_forms",
-    "List the portals/forms Aster can help with.",
-    "Checking which forms I support",
+    "List the scholarship portals and the schemes Aster has verified rules for. Any other "
+    "scholarship can still be researched live.",
+    "Checking which scholarships I know",
 )
 def list_supported_forms(ctx: Ctx, _: Any) -> ToolResult:
+    packs = usable_packs()
     return ToolResult(
         ok=True,
-        data=[
-            {"portal": k, **v, "verified_schemes": len(verified_packs(k))}
-            for k, v in SUPPORTED_PORTALS.items()
-        ],
+        data={
+            "portals": [
+                {
+                    "portal": k,
+                    "name": p.name,
+                    "schemes": [
+                        {"scheme_key": s.scheme_key, "name": s.name.get(ctx.lang)}
+                        for s in packs.values()
+                        if s.portal == k
+                    ],
+                }
+                for k, p in portals().items()
+            ],
+            "other_schemes": "any other scholarship: set_form with scheme_name, then research",
+        },
     )
 
 
-class PortalArgs(BaseModel):
+class SuggestArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    portal: str = Field(description="portal key from list_supported_forms, e.g. mahadbt")
+    portal: str | None = Field(
+        default=None, description="only schemes of this portal (e.g. mahadbt); omit for all"
+    )
 
 
 @register(
     "suggest_schemes",
-    "Show the user a card of schemes on a portal to choose from.",
-    "Finding schemes for you",
-    PortalArgs,
+    "Show the user a card of scholarships with known official rules, ranked by how well their "
+    "profile fits. Use it when the user is unsure which scholarship to apply for.",
+    "Finding scholarships for you",
+    SuggestArgs,
 )
-def suggest_schemes(ctx: Ctx, args: PortalArgs) -> ToolResult:
-    # ponytail: stub until M5 — lists verified packs without eligibility ranking.
-    portal = _portal(args.portal)
-    if not portal:
+def suggest_schemes(ctx: Ctx, args: SuggestArgs) -> ToolResult:
+    portal = (args.portal or "").strip().lower().replace(" ", "") or None
+    packs = [p for p in usable_packs().values() if not portal or p.portal == portal]
+    if not packs:
         return ToolResult(
-            ok=False, error=f"unsupported portal; supported: {list(SUPPORTED_PORTALS)}"
+            ok=False,
+            error="no schemes with known rules for that portal; ask the user which scholarship "
+            "they want and research it",
         )
-    packs = verified_packs(portal)
-    options = [
-        {"portal": portal, "scheme_key": k, "name": _name(p, ctx.lang)} for k, p in packs.items()
-    ] or [{"portal": portal, "scheme_key": None, "name": SUPPORTED_PORTALS[portal]["name"]}]
-    note = "Eligibility ranking comes after research; the official authority decides."
+    profile = repo.get_profile(ctx.db, ctx.user_id)
+    options = []
+    for p in packs:
+        c = counts(evaluate_pack(p, profile, ctx.lang))
+        options.append(
+            {
+                "portal": p.portal,
+                "scheme_key": p.scheme_key,
+                "name": p.name.get(ctx.lang),
+                "draft": p.status != "verified",
+                **c,
+            }
+        )
+    options.sort(key=lambda o: (o["not_met"], -o["met"]))
+    options = options[:MAX_OPTIONS]
+    payload = {"options": options, "note": SUGGEST_NOTE}
     return ToolResult(
         ok=True,
-        data={"options": options, "note": note},
-        card=Card(kind="scheme_suggestions", payload={"options": options, "note": note}),
+        data={
+            "options": [
+                {k: o[k] for k in ("scheme_key", "name", "met", "not_met")} for o in options
+            ]
+        },
+        card=Card(kind="scheme_suggestions", payload=payload),
     )
+
+
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)]
 
 
 class SetFormArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    portal: str = Field(description="portal key, e.g. mahadbt")
-    scheme_key: str | None = Field(default=None, description="only a key from suggest_schemes")
+    scheme_key: str | None = Field(
+        default=None, description="a key from suggest_schemes / list_supported_forms"
+    )
+    scheme_name: Name | None = Field(
+        default=None,
+        description="the scholarship's name as the user said it, when it has no scheme_key",
+    )
+
+    @model_validator(mode="after")
+    def _one(self) -> "SetFormArgs":
+        if bool(self.scheme_key) == bool(self.scheme_name):
+            raise ValueError("give exactly one of scheme_key or scheme_name")
+        return self
 
 
 @register(
     "set_form",
-    "Record the form the user chose. Call it once the user clearly names a supported portal.",
-    "Setting up your form",
+    "Record the scholarship the user chose. scheme_key for a known scheme; otherwise "
+    "scheme_name (any scholarship), which you then research.",
+    "Setting up your scholarship",
     SetFormArgs,
 )
 def set_form(ctx: Ctx, args: SetFormArgs) -> ToolResult:
-    portal = _portal(args.portal)
-    if not portal:
-        return ToolResult(
-            ok=False, error=f"unsupported portal; supported: {list(SUPPORTED_PORTALS)}"
-        )
-    if args.scheme_key and args.scheme_key not in verified_packs(portal):
-        return ToolResult(
-            ok=False, error="unknown scheme_key; omit it or use one from suggest_schemes"
-        )
-    # The portal URL is always the official one, never an LLM-supplied link (guardrail 8).
-    values = {
-        "portal": portal,
-        "scheme_key": args.scheme_key,
-        "portal_url": SUPPORTED_PORTALS[portal]["url"],
-    }
+    if args.scheme_key:
+        pack = usable_packs().get(args.scheme_key)
+        if not pack:
+            return ToolResult(
+                ok=False, error="unknown scheme_key; use one from suggest_schemes or scheme_name"
+            )
+        # The portal URL comes from the reviewed knowledge files, never from the LLM (guardrail 8).
+        values: dict[str, Any] = {
+            "portal": pack.portal,
+            "scheme_key": pack.scheme_key,
+            "scheme_name": pack.name.en,
+            "portal_url": portals()[pack.portal].url if pack.portal in portals() else None,
+        }
+    else:
+        # No pack: no official URL is known yet, so none is stored.
+        values = {
+            "portal": None,
+            "scheme_key": None,
+            "scheme_name": args.scheme_name,
+            "portal_url": None,
+        }
     row = repo.update_session(ctx.db, ctx.user_id, ctx.session["id"], values)
     if not row:
         return ToolResult(ok=False, error="session not updated")
     ctx.session.update(row)
     repo.write_audit(ctx.db, ctx.user_id, ctx.session["id"], "form.set", values, actor="agent")
-    return ToolResult(ok=True, data=values)
+    return ToolResult(
+        ok=True,
+        data={**values, "known_rules": bool(args.scheme_key)},
+    )

@@ -47,6 +47,15 @@ class Settings(BaseSettings):
 
     # research
     tavily_api_key: str = ""
+    tavily_base_url: str = "https://api.tavily.com"
+    search_timeout_s: float = 10.0
+    fetch_timeout_s: float = 10.0  # per read
+    fetch_total_s: float = 20.0  # whole download
+    fetch_max_bytes: int = 5_000_000
+    pdf_max_pages: int = 15
+    ocr_timeout_s: float = 30.0
+    # dev only: also offer draft knowledge packs (badged DRAFT). Ignored when APP_ENV=prod.
+    packs_include_draft: bool = False
 
     @field_validator("allowed_origins", mode="before")
     @classmethod

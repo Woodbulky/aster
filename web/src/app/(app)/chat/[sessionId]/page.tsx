@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { Avatar } from "@/components/avatar/Avatar";
 import { ConfirmProfileCard } from "@/components/cards/ConfirmProfileCard";
+import { EligibilityCard } from "@/components/cards/EligibilityCard";
+import { ResearchSummaryCard } from "@/components/cards/ResearchSummaryCard";
 import { SchemeSuggestionsCard } from "@/components/cards/SchemeSuggestionsCard";
 import { completion } from "@/components/profile/ProfileForm";
 import { LatencyOverlay } from "@/components/voice/LatencyOverlay";
@@ -18,7 +20,7 @@ import { useVoice } from "@/lib/voice/useVoice";
 import { type Status, useSessionSocket } from "@/lib/ws/client";
 
 const PROMPTS = [
-  { icon: GraduationCap, text: "Which scholarships can I apply for?", note: "Explore MahaDBT schemes" },
+  { icon: GraduationCap, text: "Which scholarships can I apply for?", note: "MahaDBT, NSP, LIC or any other" },
   { icon: FileText, text: "Which documents will I need?", note: "Get organised early" },
   { icon: UserRound, text: "Help me complete my profile", note: "Tell me once, reuse everywhere" },
   { icon: MonitorSmartphone, text: "Guide me through the portal form", note: "Field by field, out loud" },
@@ -32,8 +34,9 @@ const GREETING: Record<Lang, string> = {
 
 const PHASE_LABEL: Record<string, string> = {
   onboarding: "Getting to know you",
-  choose_form: "Choosing a form",
+  choose_form: "Choosing a scholarship",
   research: "Looking up the rules",
+  eligibility: "Checking the rules",
 };
 
 const STATUS_LABEL: Record<Exclude<Status, "open">, string> = {
@@ -154,11 +157,15 @@ export default function ChatSessionPage() {
                             sendUi(ok ? "profile_confirmed" : "profile_rejected", { proposal_id: card.payload.proposal_id })
                           }
                         />
-                      ) : (
+                      ) : card.kind === "scheme_suggestions" ? (
                         <SchemeSuggestionsCard
                           payload={card.payload}
                           onPick={(o) => sendUi("form_selected", { portal: o.portal, scheme_key: o.scheme_key })}
                         />
+                      ) : card.kind === "eligibility" ? (
+                        <EligibilityCard payload={card.payload} />
+                      ) : (
+                        <ResearchSummaryCard payload={card.payload} />
                       )}
                     </li>
                     );

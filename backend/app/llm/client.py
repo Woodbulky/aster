@@ -26,7 +26,24 @@ Provider = Literal["gpu", "fallback"]
 DISCOVERY_TTL_S = 30.0
 FIRST_TOKEN_TIMEOUT_S = 8.0  # ARCHITECTURE: LLM chat/tools
 VISION_FIRST_TOKEN_TIMEOUT_S = 20.0  # ARCHITECTURE: vision
+# Ollama sends a tool call only once it is complete: a save_research with a few quotes took 11.8 s
+# on the T4 before its first chunk, and the 8 s limit threw that answer away (seen live). A dead
+# tunnel still fails fast on connect, so this only waits for a slow-but-working GPU.
+TOOLS_FIRST_TOKEN_TIMEOUT_S = 30.0
 _B64 = re.compile(r"[A-Za-z0-9+/=_-]{80,}")
+# A 429 means "wait", not "down": waiting beats an apology (seen live: a research turn is 6-7
+# rounds and Groq's free tier allows 8k tokens/min). Longer waits than this fail as before.
+RATE_LIMIT_MAX_WAIT_S = 30.0
+RATE_LIMIT_RETRIES = 2
+_TRY_AGAIN = re.compile(r"try again in ([0-9.]+)s")
+
+
+class RateLimited(httpx.HTTPStatusError):
+    def __init__(self, msg: str, *, request: httpx.Request, response: httpx.Response, wait: float):
+        super().__init__(msg, request=request, response=response)
+        self.wait = wait
+
+
 STREAM_TIMEOUT = httpx.Timeout(30.0, connect=5.0)  # per-read gap once streaming
 
 
@@ -176,6 +193,12 @@ async def _sse(s: Settings, p: Provider, body: dict[str, Any]) -> AsyncIterator[
         try:
             if resp.status_code == 429 and i < len(keys) - 1:
                 continue
+            if resp.status_code == 429:
+                text = (await resp.aread()).decode(errors="replace")
+                m = _TRY_AGAIN.search(text)
+                header = resp.headers.get("retry-after", "")
+                wait = float(m.group(1)) if m else float(header) if header.isdigit() else 10.0
+                raise RateLimited(f"{p} 429", request=req, response=resp, wait=wait)
             if resp.status_code >= 400:
                 # Redact base64 runs: an error body may echo an image/frame (guardrail 7).
                 body_text = (await resp.aread()).decode(errors="replace")
@@ -225,8 +248,40 @@ async def chat_stream(
     body: dict[str, Any] = {"messages": messages, "stream": True, **params}
     if tools:
         body["tools"] = tools
-    first_token_s = VISION_FIRST_TOKEN_TIMEOUT_S if sensitive_kind else FIRST_TOKEN_TIMEOUT_S
+    if sensitive_kind:
+        first_token_s = VISION_FIRST_TOKEN_TIMEOUT_S
+    elif tools:
+        first_token_s = TOOLS_FIRST_TOKEN_TIMEOUT_S
+    else:
+        first_token_s = FIRST_TOKEN_TIMEOUT_S
 
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        waits: list[float] = []
+        async for chunk in _first_provider(
+            s, body, first_token_s, sensitive_kind, user_id, session_id, waits
+        ):
+            yield chunk
+        if not waits:
+            return  # served (or failed for real: _first_provider raised)
+        wait = min(waits)
+        if attempt == RATE_LIMIT_RETRIES or wait > RATE_LIMIT_MAX_WAIT_S:
+            raise LLMUnavailable(f"rate limited (retry in {wait:.0f}s)")
+        log.info("llm rate limited, waiting %.1fs", wait)
+        await asyncio.sleep(wait + 0.5)
+
+
+async def _first_provider(
+    s: Settings,
+    body: dict[str, Any],
+    first_token_s: float,
+    sensitive_kind: str | None,
+    user_id: str | None,
+    session_id: str | None,
+    waits: list[float],
+) -> AsyncIterator[Chunk]:
+    """Stream from the first provider that answers. Rate-limited providers add their wait to
+    `waits` and return without raising, so the caller can wait and retry; other failures count
+    on the breaker and raise LLMUnavailable once every provider failed."""
     errors: list[str] = []
     for p in await asyncio.to_thread(providers, s):
         if sensitive_kind and p == "fallback":
@@ -243,6 +298,10 @@ async def chat_stream(
         stream = _sse(s, p, body)
         try:
             first = await asyncio.wait_for(anext(stream), first_token_s)
+        except RateLimited as e:
+            await stream.aclose()
+            waits.append(e.wait)  # busy, not broken: the breaker is not touched
+            continue
         except (TimeoutError, StopAsyncIteration, httpx.HTTPError, ValueError) as e:
             await stream.aclose()
             breakers[p].failure()
@@ -255,5 +314,7 @@ async def chat_stream(
         yield first
         async for chunk in stream:
             yield chunk
+        waits.clear()
         return
-    raise LLMUnavailable("; ".join(errors) or "no LLM provider configured")
+    if not waits:
+        raise LLMUnavailable("; ".join(errors) or "no LLM provider configured")

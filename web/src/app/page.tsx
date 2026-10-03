@@ -68,7 +68,7 @@ export default function Landing() {
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pt-12 pb-16 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:pt-20 lg:pb-24">
           <div>
             <span className="eyebrow flex items-center gap-2">
-              <span className="size-1.5 rounded-full bg-primary" /> Scholarships made simpler · MahaDBT
+              <span className="size-1.5 rounded-full bg-primary" /> Scholarships made simpler
             </span>
             <h1 className="mt-5 text-5xl leading-[1.05] font-bold text-primary sm:text-6xl">
               Big dreams.

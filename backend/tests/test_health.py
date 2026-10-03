@@ -27,6 +27,7 @@ def test_health() -> None:
             "sarvam_tts": "missing",
             "tavily": "missing",
         },
+        "packs": {"usable": 2, "total": 3},  # fixture packs: 2 verified + 1 draft
     }
 
 
@@ -38,9 +39,14 @@ def test_health_provider_states() -> None:
         "sarvam": "configured",
         "sarvam_stt": "up",
         "sarvam_tts": "up",
-        "tavily": "configured",
+        "tavily": "up",
     }
     assert _health(llm_primary="fallback")["providers"]["gpu"] == "off"
+
+
+def test_health_drafts_dev_only() -> None:
+    assert _health(packs_include_draft="true")["packs"] == {"usable": 3, "total": 3}
+    assert _health(packs_include_draft="true", app_env="prod")["packs"]["usable"] == 2
 
 
 def test_health_shows_active_provider() -> None:

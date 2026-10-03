@@ -5,10 +5,31 @@ from app.llm import client as llm_client
 
 
 @pytest.fixture(autouse=True)
+def _fixture_packs(monkeypatch: pytest.MonkeyPatch):
+    """Tests use tests/fixtures/knowledge (2 verified packs + 1 draft), not the real packs."""
+    from pathlib import Path
+
+    from app.config import Settings
+    from app.research import packs
+
+    monkeypatch.setattr(packs, "KNOWLEDGE", Path(__file__).parent / "fixtures" / "knowledge")
+    # a local .env with PACKS_INCLUDE_DRAFT=true must not change what tests see
+    monkeypatch.setattr(packs, "get_settings", lambda: Settings(_env_file=None))
+    packs.all_packs.cache_clear()
+    packs.portals.cache_clear()
+    yield
+    packs.all_packs.cache_clear()
+    packs.portals.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_llm_state() -> None:
     """Module-level discovery cache and breakers must not leak between tests."""
+    from app.research import search
+
     llm_client.reset_discovery()
     llm_client.breakers.update(gpu=llm_client.Breaker(), fallback=llm_client.Breaker())
+    search.breaker.success()
 
 
 class FakeStore:
@@ -24,6 +45,8 @@ class FakeStore:
         self.messages: list[dict] = []
         self.proposals: list[dict] = []
         self.audit: list[tuple[str, dict]] = []
+        self.fetched: list[dict] = []
+        self.research: list[dict] = []
 
     def _own(self, user_id: str) -> bool:
         return user_id == self.user_id
@@ -95,6 +118,54 @@ class FakeStore:
         assert self._own(user_id)
         self.audit.append((action, payload))
 
+    def add_fetched(self, _db, user_id, session_id, values):
+        row = {
+            "id": f"fc{len(self.fetched) + 1}",
+            **values,
+            "user_id": user_id,
+            "session_id": session_id,
+            "fetched_at": "2026-10-03T10:00:00+00:00",
+        }
+        self.fetched.append(row)
+        return row
+
+    def get_fetched(self, _db, user_id, session_id, content_id):
+        return next(
+            (
+                f
+                for f in self.fetched
+                if f["id"] == content_id
+                and f["user_id"] == user_id
+                and f["session_id"] == session_id
+            ),
+            None,
+        )
+
+    def find_fetched(self, _db, user_id, session_id, url):
+        rows = [
+            f
+            for f in self.fetched
+            if f["url"] == url and f["user_id"] == user_id and f["session_id"] == session_id
+        ]
+        return rows[-1] if rows else None
+
+    def add_research(self, _db, user_id, session_id, values):
+        assert self._own(user_id)
+        row = {"id": f"r{len(self.research) + 1}", **values, "session_id": session_id}
+        self.research.append(row)
+        return row
+
+    def latest_research(self, _db, user_id, session_id, scheme, kind=None):
+        assert self._own(user_id)
+        rows = [
+            r
+            for r in self.research
+            if r["session_id"] == session_id
+            and r["scheme"] == scheme
+            and (kind is None or r["kind"] == kind)
+        ]
+        return rows[-1] if rows else None
+
 
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
@@ -114,6 +185,11 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         "latest_pending_proposal",
         "set_proposal_status",
         "write_audit",
+        "add_fetched",
+        "get_fetched",
+        "find_fetched",
+        "add_research",
+        "latest_research",
     ):
         monkeypatch.setattr(repo, name, getattr(st, name))
     return st
@@ -133,6 +209,31 @@ COMPLETE_PROFILE = {
     "current_course": "B.E. Computer",
     "current_year": 2,
 }
+
+
+@pytest.fixture
+def run(store: FakeStore, monkeypatch: pytest.MonkeyPatch):
+    """run(llm, **run_turn kwargs) -> every message the turn sent."""
+    import asyncio
+
+    from app.agent import orchestrator
+    from app.config import Settings
+    from tests.test_agent import ctx
+
+    sent: list = []
+
+    async def send(m) -> None:
+        sent.append(m)
+
+    def go(llm, c=None, **kw) -> list:
+        monkeypatch.setattr(orchestrator, "chat_stream", llm)
+        turn = orchestrator.run_turn(
+            Settings(), c or ctx(store), send, assistant_name="Aster", **kw
+        )
+        asyncio.run(turn)
+        return sent
+
+    return go
 
 
 @pytest.fixture

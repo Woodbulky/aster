@@ -105,4 +105,4 @@ def run_tool(ctx: Ctx, name: str, raw_args: str | dict[str, Any]) -> ToolResult:
         return ToolResult(ok=False, error="internal error, tell the user plainly")
 
 
-from app.agent.tools import forms, profile  # noqa: E402, F401  (registers the tools)
+from app.agent.tools import eligibility, forms, profile, research  # noqa: E402, F401  (registers)

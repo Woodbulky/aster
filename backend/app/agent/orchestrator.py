@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 
 Send = Callable[[BaseModel], Awaitable[None]]
 MAX_TOOL_CALLS = 6
+MAX_RESEARCH_NUDGES = 2
 # A short spoken reply is a few sentences; the cap stops a looping model (seen live with the 8B
 # GPU model) from streaming and paying for TTS forever.
 REPLY_MAX_TOKENS = 800
@@ -49,7 +50,68 @@ NO_CARD_NUDGE = (
     "propose_profile_update this turn, so no card exists. Call it now with the values the user "
     "gave. If there are none, reply with one short sentence asking for the next field."
 )
+# Seen live (8B GPU model): it read the pages, then typed its own list of "official rules"
+# instead of calling save_research, so nothing was quote-checked.
+RESEARCH_NUDGE = (
+    "[system check] You read pages but did not call save_research, so nothing you wrote was "
+    "checked and the user has not seen it. Call save_research now with the rules and documents, "
+    "each with a quote copied exactly from the page text. Do not list rules in your reply. If "
+    "the pages have no rules, say so in one sentence."
+)
+# Qwen's own tool-call syntax, typed out as text when no tools were offered (seen live on Groq
+# after the tool cap). Never shown, spoken or stored.
+_TOOL_MARKUP = re.compile(r"<tool_call>.*?(?:</tool_call>|$)", re.DOTALL)
+# Seen live (GPU and Groq): the history keeps only reply text, not the tool calls behind it, so
+# after a few turns the model copies "Let me check… Let me read…" and calls nothing.
+NO_TOOL_NUDGE = (
+    "[system check] You said what you would do but called no tool, so nothing happened and the "
+    "user has not seen your text. Call the next tool now. If the user named a different "
+    "scholarship, call set_form with it first. Otherwise: get_knowledge_pack if the state has a "
+    "scheme_key; else search_web, or fetch_url / read_pdf on the most official result you "
+    "already found. Do not announce it; just call it."
+)
 _CJK = re.compile(r"[⺀-㏿㐀-䶿一-鿿가-힯豈-﫿＀-￯]")
+
+
+# "ठीक है, अब से मैं केवल हिंदी में ही जवाब दूँगा।" — models answered the language note itself,
+# every turn, then copied that line from the history (seen live). Sentences with all three parts
+# are removed from the history the model sees and from the stored reply.
+_ACK_PARTS = (
+    re.compile(r"केवल|सिर्फ|फक्त|\bonly\b", re.IGNORECASE),
+    re.compile(r"हिंदी|हिन्दी|मराठी|english|hindi|marathi", re.IGNORECASE),
+    re.compile(r"जवाब|उत्तर|बोल|repl|respond|answer|speak", re.IGNORECASE),
+)
+
+
+def _sentences(text: str) -> list[str]:
+    return re.split(r"(?<=[।.!?\n])", text)
+
+
+def strip_lang_ack(text: str) -> str:
+    parts = _sentences(text)
+    return "".join(s for s in parts if not all(p.search(s) for p in _ACK_PARTS)).strip()
+
+
+# "Let me check the official rules…" with no tool call behind it (seen live on GPU and Groq, in
+# research and eligibility). The model copies it from its own earlier replies.
+_PROMISE = re.compile(
+    r"^\s*(let me|let's|i'll|i will|i am going to|i'm going to|one moment|please wait)\b"
+    r"|(देखती|देखता|जाँचती|जाँचता|पाहते|पाहतो|तपासते|तपासतो)\s*(हूँ|हूं|आहे)?\s*[।.]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def promise_only(text: str) -> bool:
+    parts = [s for s in _sentences(text) if s.strip()]
+    return bool(parts) and all(_PROMISE.search(s) for s in parts)
+
+
+def strip_promises(text: str) -> str:
+    return "".join(s for s in _sentences(text) if not _PROMISE.search(s)).strip()
+
+
+def strip_markup(text: str) -> str:
+    return _TOOL_MARKUP.sub("", text)
 
 
 def strip_cjk(text: str) -> str:
@@ -67,7 +129,13 @@ async def _db(fn: Callable[..., Any], *a: Any, **kw: Any) -> Any:
 async def sync_phase(ctx: Ctx, send: Send) -> bool:
     """Move the session to the phase its DB state calls for. True if it changed."""
     profile = await _db(repo.get_profile, ctx.db, ctx.user_id)
-    new = phases.next_phase(ctx.session, profile)
+    scheme = phases.scheme_of(ctx.session)
+    researched = bool(
+        scheme
+        and ctx.session["phase"] in ("research", "eligibility")
+        and await _db(repo.latest_research, ctx.db, ctx.user_id, ctx.session["id"], scheme)
+    )
+    new = phases.next_phase(ctx.session, profile, researched)
     old = ctx.session["phase"]
     if new == old:
         return False
@@ -85,6 +153,14 @@ async def sync_phase(ctx: Ctx, send: Send) -> bool:
     return True
 
 
+def _scheme_line(session: dict[str, Any]) -> str:
+    if session.get("scheme_key"):
+        return f"{session.get('scheme_name') or ''} (scheme_key={session['scheme_key']})"
+    if session.get("scheme_name"):
+        return f"{session['scheme_name']} (no knowledge pack: research it live)"
+    return "not chosen"
+
+
 async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
     phase = ctx.session["phase"]
     profile = await _db(repo.get_profile, ctx.db, ctx.user_id)
@@ -92,7 +168,7 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
     pending = await _db(repo.latest_pending_proposal, ctx.db, ctx.user_id, ctx.session["id"])
     state = [
         f"Saved profile (masked): {json.dumps(masked(profile), ensure_ascii=False, default=str)}",
-        f"Session: portal={ctx.session.get('portal') or 'not chosen'}",
+        f"Chosen scholarship: {_scheme_line(ctx.session)}",
     ]
     if phase == "onboarding" and missing:
         state.append(f"Missing core fields: {missing}")
@@ -109,11 +185,18 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
     return base + "\n\n## State\n" + "\n".join(state)
 
 
-def _with_lang_note(history: list[dict[str, Any]], lang: str) -> list[dict[str, Any]]:
+def _with_lang_note(
+    history: list[dict[str, Any]], rows: list[dict[str, Any]], lang: str
+) -> list[dict[str, Any]]:
     """After a language switch the old-language history wins over the system prompt (seen live:
     toggle on Hindi, user speaking Marathi, reply in Marathi). A note inside the latest user turn,
     written in the target language (Marathi and Hindi share a script, so an English "reply in
-    Hindi" still got Marathi), is what models follow. Request only, never stored."""
+    Hindi" still got Marathi), is what models follow. Only added while the recent history has
+    another language, and worded as a silent instruction: a request ("please reply only in Hindi
+    from now on") was acknowledged on every turn. Request only, never stored."""
+    talk = [r for r in rows if r["role"] in ("user", "assistant")]
+    if not any(r.get("lang") not in (None, lang) for r in talk):
+        return history
     note = f"\n\n{t(lang, 'reply_in')}"
     out = list(history)
     for i in range(len(out) - 1, -1, -1):
@@ -127,7 +210,11 @@ def _history(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for r in rows:
         if r["role"] in ("user", "assistant") and r.get("content"):
-            out.append({"role": r["role"], "content": r["content"]})
+            text = r["content"]
+            if r["role"] == "assistant":  # drop what the model would otherwise copy
+                text = strip_promises(strip_lang_ack(text))
+            if text:
+                out.append({"role": r["role"], "content": text})
         elif r["role"] == "system" and r.get("input_mode") == "ui":
             out.append({"role": "user", "content": f"[UI event] {r['content']}"})
     return out
@@ -166,6 +253,34 @@ async def _complete(
             slot["arguments"] += args if isinstance(args, str) else json.dumps(args)
     out = [{**c, "id": c["id"] or f"call_{i}"} for i, c in sorted(calls.items())]
     return "".join(text), out, provider
+
+
+async def run_tool_ui(
+    ctx: Ctx, send: Send, name: str, raw_args: str | dict[str, Any]
+) -> ToolResult:
+    """Run a tool with its UI events, send its card, store it (the history keeps the card, so the
+    client can show it again after a reload). Used by the LLM loop and by card taps."""
+    label = TOOLS[name].label if name in TOOLS else name
+    await send(ToolEvent(name=name, status="started", label=label))
+    await send(AgentState(state="thinking", detail=label))
+    res = await _db(run_tool, ctx, name, raw_args)
+    await send(ToolEvent(name=name, status="done" if res.ok else "failed", label=label))
+    if res.card:
+        await send(CardMsg(**res.card.model_dump()))
+    args = raw_args if isinstance(raw_args, str) else json.dumps(raw_args, ensure_ascii=False)
+    await _db(
+        repo.add_message,
+        ctx.db,
+        ctx.user_id,
+        ctx.session["id"],
+        {
+            "role": "tool",
+            "tool_name": name,
+            "tool_payload": {"args": args, "result": res.model_dump()},
+            "lang": ctx.lang,
+        },
+    )
+    return res
 
 
 def _tool_content(res: ToolResult) -> str:
@@ -217,12 +332,10 @@ async def run_turn(
 
     await send(AgentState(state="thinking"))
     changed = await sync_phase(ctx, send)
-    history = _history(
-        await _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], HISTORY)
-    )
+    rows = await _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], HISTORY)
     msgs: list[dict[str, Any]] = [
         {"role": "system", "content": await _system_prompt(ctx, assistant_name)},
-        *_with_lang_note(history, ctx.lang),
+        *_with_lang_note(_history(rows), rows, ctx.lang),
     ]
     message_id = str(uuid.uuid4())
     speaker = speaker_factory(message_id) if speaker_factory else None
@@ -234,13 +347,68 @@ async def run_turn(
     failed = False
     card_sent = False
     nudged = False
+    read_pages = saved = False
+    save_bonus = False  # one save_research past the cap, so found quotes aren't lost
+    research_nudges = 0
+    promised = False
+    checked = False  # check_eligibility ran in code after save_research
     onboarding = ctx.session["phase"] == "onboarding"
+
+    async def hold(_m: BaseModel) -> None:
+        pass
+
     try:
         while True:
             tools = schemas(ctx.session["phase"]) if calls < MAX_TOOL_CALLS else None
+            if save_bonus:
+                tools = [t for t in schemas("research") if t["function"]["name"] == "save_research"]
+            # Research replies are held until the round is checked, so rules the model typed
+            # without save_research never reach the user (guardrail 2: no source, no value).
+            held = ctx.session["phase"] == "research"
             text, tool_calls, provider = await _complete(
-                s, msgs, tools or None, send, message_id, speaker, marks
+                s,
+                msgs,
+                tools or None,
+                hold if held else send,
+                message_id,
+                None if held else speaker,
+                marks,
             )
+            # Research isn't done until save_research: a reply that stops before that (narration
+            # copied from the history, seen live even after a search) is held and nudged.
+            if (
+                held
+                and not tool_calls
+                and not saved
+                and research_nudges < MAX_RESEARCH_NUDGES
+                and (calls < MAX_TOOL_CALLS or read_pages)
+            ):
+                research_nudges += 1
+                save_bonus = calls >= MAX_TOOL_CALLS
+                msgs.append({"role": "assistant", "content": text})
+                msgs.append(
+                    {"role": "user", "content": RESEARCH_NUDGE if read_pages else NO_TOOL_NUDGE}
+                )
+                continue
+            # Any other phase: a reply that only promises to act, with no tool call. Already
+            # streamed, so the final message (which replaces it in the UI) drops it.
+            if (
+                not held
+                and not tool_calls
+                and not onboarding
+                and not promised
+                and calls < MAX_TOOL_CALLS
+                and promise_only(text)
+            ):
+                promised = True
+                msgs.append({"role": "assistant", "content": text})
+                msgs.append({"role": "user", "content": NO_TOOL_NUDGE})
+                continue
+            text = strip_markup(text)
+            if held and text:
+                await send(AssistantDelta(message_id=message_id, text=text))
+                if speaker:
+                    speaker.feed(text)
             reply.append(text)
             if tool_calls and speaker:
                 speaker.flush()
@@ -275,41 +443,49 @@ async def run_turn(
             )
             for c in tool_calls:
                 calls += 1
-                label = TOOLS[c["name"]].label if c["name"] in TOOLS else c["name"]
-                if calls > MAX_TOOL_CALLS:
+                bonus = save_bonus and c["name"] == "save_research"
+                save_bonus = save_bonus and not bonus
+                if calls > MAX_TOOL_CALLS and not bonus:
                     res = ToolResult(
                         ok=False, error="tool limit reached; answer with what you have"
                     )
                 else:
-                    await send(ToolEvent(name=c["name"], status="started", label=label))
-                    await send(AgentState(state="thinking", detail=label))
-                    res = await _db(run_tool, ctx, c["name"], c["arguments"])
-                    await send(
-                        ToolEvent(
-                            name=c["name"], status="done" if res.ok else "failed", label=label
-                        )
-                    )
-                    if res.card:
-                        card_sent = True
-                        await send(CardMsg(**res.card.model_dump()))
-                    await _db(
-                        repo.add_message,
-                        ctx.db,
-                        ctx.user_id,
-                        ctx.session["id"],
-                        {
-                            "role": "tool",
-                            "tool_name": c["name"],
-                            "tool_payload": {"args": c["arguments"], "result": res.model_dump()},
-                            "lang": ctx.lang,
-                        },
-                    )
+                    res = await run_tool_ui(ctx, send, c["name"], c["arguments"])
+                    card_sent = card_sent or res.card is not None
+                    read_pages = read_pages or (res.ok and c["name"] in ("fetch_url", "read_pdf"))
+                    saved = saved or (res.ok and c["name"] == "save_research")
                 msgs.append(
                     {"role": "tool", "tool_call_id": c["id"], "content": _tool_content(res)}
                 )
             if await sync_phase(ctx, send):
                 changed = True
                 msgs[0] = {"role": "system", "content": await _system_prompt(ctx, assistant_name)}
+                if saved and ctx.session["phase"] == "eligibility" and not checked:
+                    # The card and its counts come from code, not from the model (seen live: it
+                    # skipped check_eligibility and recited "3 of 5 met" from the prompt example).
+                    checked = True
+                    res = await run_tool_ui(ctx, send, "check_eligibility", {})
+                    card_sent = card_sent or res.card is not None
+                    msgs.append(
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "auto_check",
+                                    "type": "function",
+                                    "function": {"name": "check_eligibility", "arguments": "{}"},
+                                }
+                            ],
+                        }
+                    )
+                    msgs.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": "auto_check",
+                            "content": _tool_content(res),
+                        }
+                    )
     except asyncio.CancelledError:  # barge-in: ponytail: the interrupted reply is not stored
         if speaker:
             speaker.cancel()
@@ -321,7 +497,7 @@ async def run_turn(
         failed = True
         log.exception("turn failed mid-stream")
 
-    text = "".join(reply).strip()
+    text = strip_lang_ack(strip_markup("".join(reply)))
     if not text and failed:
         text = t(ctx.lang, "llm_unavailable") or ""
         provider = "template"

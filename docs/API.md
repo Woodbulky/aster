@@ -5,7 +5,7 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 ## REST (`/api`)
 | Method | Path | Body → Result |
 |---|---|---|
-| GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam/tavily: configured\|missing, sarvam_stt/sarvam_tts: up\|open\|missing}`, version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
+| GET | `/health` | `providers: {gpu: up\|down\|open\|off, llm_fallback: up\|open\|missing, sarvam: configured\|missing, tavily/sarvam_stt/sarvam_tts: up\|open\|missing}`, `packs: {usable, total}` (0 total on a deploy = `knowledge/` didn't ship), version, `llm: {primary: gpu\|fallback, active: gpu\|fallback\|none}`. No vendor calls (safe for a keep-warm pinger). |
 | GET | `/api/me` | profile (masked) + assistant settings |
 | POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → `{status: accepted\|rejected, saved}`. Own pending proposals only (else 404). `edits` may only touch proposed keys; `""` = don't save that field. Kept values get `source_type` = the proposal's evidence + `source_ref {proposal_id, message_id}`; corrected values get `manual`. Audit `profile.confirmed`/`profile.rejected` with field names only |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |
@@ -28,7 +28,7 @@ Client → server (JSON unless noted):
 | `user_text` | `text` |
 | `audio_start` | `mime, lang_hint?` → then ONE binary frame (audio, ≤ 2 MB) → `audio_end`. Errors: `bad_audio`, `no_speech`, `stt_unavailable` |
 | `interrupt` | — cancels the running turn (LLM + TTS); server answers `agent_state idle` |
-| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {portal, scheme_key?}`; later: `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload`. `form_selected` calls `set_form` in code, not via the LLM |
+| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {scheme_key, portal?}`; later: `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload`. `form_selected` runs `set_form` → `get_knowledge_pack` → `check_eligibility` in code, not via the LLM; the LLM then only speaks the summary |
 | `screen_frame` | `frame_id, reason` → then ONE binary frame (JPEG) |
 | `ping` | — |
 
@@ -57,4 +57,6 @@ Cards (`card.kind` → `payload`):
 | kind | payload |
 |---|---|
 | `confirm_profile` | `{proposal_id, updates: {field_key: value}}` → answer via `POST /api/profile/confirm`, then `ui_event profile_confirmed/rejected` |
-| `scheme_suggestions` | `{options: [{portal, scheme_key\|null, name}], note}` → tap sends `ui_event form_selected` |
+| `scheme_suggestions` | `{options: [{portal, scheme_key, name, draft, met, not_met, unknown}], note}` → tap sends `ui_event form_selected` |
+| `eligibility` | `{scheme_key\|null, name, origin: pack\|live, draft, results: [{id, text, status: met\|not_met\|unknown, reason, source: {url, quote}, ask_field}], counts, deadlines: [{label, date, passed, source}], note}`. Shown again after a reload (from its tool row) |
+| `research_summary` | `{scheme, eligibility: [item], documents: [item], rejected, note}`, item = `{text, source_url, quote, content_id, site, fetched_on}` (all unverified) |

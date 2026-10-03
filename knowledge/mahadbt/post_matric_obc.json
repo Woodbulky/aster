@@ -1,0 +1,278 @@
+{
+  "scheme_key": "mahadbt.post_matric_obc",
+  "portal": "mahadbt",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": null,
+  "name": {
+    "en": "Post-Matric Scholarship for OBC Students",
+    "mr": "इतर मागास वर्ग विद्यार्थ्यांसाठी मॅट्रिकोत्तर शिष्यवृत्ती",
+    "hi": "अन्य पिछड़ा वर्ग विद्यार्थियों के लिए पोस्ट-मैट्रिक छात्रवृत्ति"
+  },
+  "department": "VJNT, OBC and SBC Welfare Department, Maharashtra",
+  "official_urls": [
+    "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E"
+  ],
+  "summary": {
+    "en": "Tuition fees, exam fees and a maintenance allowance for OBC students after 10th, with parents' income up to ₹2.5 lakh.",
+    "mr": "",
+    "hi": ""
+  },
+  "criteria": [
+    {
+      "id": "obc_category",
+      "text": {
+        "en": "Belongs to the OBC category",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.category"
+          },
+          "OBC"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Applicant should be belongs to OBC category."
+      },
+      "ask_if_unknown": {
+        "field_key": "category"
+      }
+    },
+    {
+      "id": "income_2_5_lakh",
+      "text": {
+        "en": "Parents' annual income ≤ ₹2,50,000",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          250000
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "The parents/Guardians annual Income should be less than or equal to Rs.2.50 Lac."
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
+      }
+    },
+    {
+      "id": "domicile_maharashtra",
+      "text": {
+        "en": "Resident of Maharashtra",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.domicile_state"
+          },
+          "Maharashtra"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Applicants must be residents of Maharashtra."
+      },
+      "ask_if_unknown": {
+        "field_key": "domicile_state"
+      }
+    },
+    {
+      "id": "post_matric",
+      "text": {
+        "en": "Studying a government-approved course after 10th",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "!!": [
+          {
+            "var": "profile.ssc_year"
+          }
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Applicants must be pursuing the education course approved by the government from class Post-Matric."
+      },
+      "ask_if_unknown": {
+        "field_key": "ssc_year"
+      }
+    },
+    {
+      "id": "attendance_75",
+      "text": {
+        "en": "75% attendance in the current year",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "75 % attendance is mandatory for current year."
+      }
+    },
+    {
+      "id": "no_other_scholarship",
+      "text": {
+        "en": "Not taking another scholarship or stipend",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "No scholarship will be paid to the Applicants under this scheme from the date he /she accepts another Scholarship / stipend."
+      }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "caste_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Caste certificate (issued by Govt. of Maharashtra)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Caste certificate - should be issued by competent authority(Issued by Govt. of Maharashtra)"
+      }
+    },
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Income certificate or income declaration",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Income certificate / Income Declaration - should be issued by competent authority"
+      }
+    },
+    {
+      "doc_type": "caste_validity",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Caste validity certificate (mandatory for professional degree / PG courses)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Caste Validity Certificate – (Mandatory for Professional Degree courses, Professional Post Graduate."
+      }
+    },
+    {
+      "doc_type": "hsc_marksheet",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "HSC or SSC or last exam marksheet",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "HSC or SSC marksheet or last examination marksheet."
+      }
+    },
+    {
+      "doc_type": "gap_certificate",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Gap certificate (if you had a gap)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Gap certificate - Not mandatory but in case of gap it is mandatory."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Father's / guardian's death certificate (if applicable)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "If applicable father/Guardians death certificate."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Ration card (to count the children in the family)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Ration Card for identify number of children in family."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Leaving certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Leaving Certificate"
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Parents' declaration about the number of children",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Declaration certificate of parents/guardians about number of children beneficiaries."
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [],
+  "notes": [
+    "Only two boys of the same parents are eligible; any number of girls (page text).",
+    "Professional courses need admission through the CAP round (page text).",
+    "VJNT and SBC students have separate MahaDBT schemes; not covered by this pack.",
+    "The page states no academic year or deadline."
+  ]
+}

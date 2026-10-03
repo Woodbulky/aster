@@ -16,11 +16,41 @@ export type ClientMsg =
 
 // ---------- cards ----------
 export type ConfirmProfilePayload = { proposal_id: string; updates: Record<string, string | number> };
-export type SchemeOption = { portal: string; scheme_key: string | null; name: string };
+export type CriterionCounts = { met: number; not_met: number; unknown: number };
+export type SchemeOption = { portal: string; scheme_key: string; name: string; draft: boolean } & CriterionCounts;
 export type SchemeSuggestionsPayload = { options: SchemeOption[]; note: string };
+export type Source = { url: string; quote: string };
+export type CriterionResult = {
+  id: string;
+  text: string;
+  status: "met" | "not_met" | "unknown";
+  reason: string; // "Meets this — per <site>" etc. (guardrail 1: never a final verdict)
+  source: Source;
+  ask_field: string | null;
+};
+export type EligibilityPayload = {
+  scheme_key: string | null;
+  name: string;
+  origin: "pack" | "live"; // live = researched on the web, unverified
+  draft: boolean; // dev only: pack not yet verified by the team
+  results: CriterionResult[];
+  counts: CriterionCounts;
+  deadlines: { label: string; date: string | null; passed: boolean; source: Source }[];
+  note: string;
+};
+export type ResearchItem = { text: string; source_url: string; quote: string; content_id: string; site: string; fetched_on: string };
+export type ResearchSummaryPayload = {
+  scheme: string;
+  eligibility: ResearchItem[];
+  documents: ResearchItem[];
+  rejected: number; // items dropped because their quote was not on the cited page
+  note: string;
+};
 export type Card =
   | { card_id: string; kind: "confirm_profile"; payload: ConfirmProfilePayload }
-  | { card_id: string; kind: "scheme_suggestions"; payload: SchemeSuggestionsPayload };
+  | { card_id: string; kind: "scheme_suggestions"; payload: SchemeSuggestionsPayload }
+  | { card_id: string; kind: "eligibility"; payload: EligibilityPayload }
+  | { card_id: string; kind: "research_summary"; payload: ResearchSummaryPayload };
 
 // ---------- server -> client ----------
 export type ServerMsg =

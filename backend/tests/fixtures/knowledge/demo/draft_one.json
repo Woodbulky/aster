@@ -1,0 +1,15 @@
+{
+  "scheme_key": "demo.draft_one",
+  "portal": "demo",
+  "status": "draft",
+  "name": { "en": "Draft Scheme" },
+  "department": "Demo dept",
+  "official_urls": ["https://scholarships.demo.gov.in/draft"],
+  "summary": { "en": "Not reviewed yet." },
+  "criteria": [
+    {
+      "id": "any", "text": { "en": "Anyone" }, "logic": null,
+      "source": { "url": "https://scholarships.demo.gov.in/draft", "quote": "Any student may apply." }
+    }
+  ]
+}

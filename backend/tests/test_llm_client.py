@@ -171,6 +171,22 @@ def test_gpu_slow_first_token_falls_back(monkeypatch: pytest.MonkeyPatch) -> Non
     assert [c.provider for c in chunks] == ["fallback"]
 
 
+def test_tool_calls_get_the_longer_first_token_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ollama sends a tool call only when it is complete (11.8 s for a save_research on the T4,
+    seen live): with tools offered, a slow GPU is waited for, not dropped."""
+    monkeypatch.setattr(client, "FIRST_TOKEN_TIMEOUT_S", 0.1)
+    monkeypatch.setattr(client, "TOOLS_FIRST_TOKEN_TIMEOUT_S", 2.0)
+
+    async def handler(r: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.4)
+        return httpx.Response(200, content=sse("ok"))
+
+    use_transport(monkeypatch, handler)
+    tools = [{"type": "function", "function": {"name": "t", "parameters": {"type": "object"}}}]
+    chunks = collect(s(gpu_url_override="https://gpu.example", **FB), HELLO, tools=tools)
+    assert [c.provider for c in chunks] == ["gpu"]
+
+
 def test_fallback_rotates_key_on_429(monkeypatch: pytest.MonkeyPatch) -> None:
     def handler(r: httpx.Request) -> httpx.Response:
         if r.headers["authorization"] == "Bearer k1":
@@ -182,6 +198,44 @@ def test_fallback_rotates_key_on_429(monkeypatch: pytest.MonkeyPatch) -> None:
     assert [c.delta["content"] for c in chunks] == ["ok"]
     assert [r.headers["authorization"] for r in seen] == ["Bearer k1", "Bearer k2"]
     assert json.loads(seen[1].content)["model"] == "fb-model"
+
+
+def test_rate_limit_waits_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Groq's free tier answers 429 "try again in Xs" mid research turn: wait, retry, and keep
+    the breaker closed (it is busy, not down)."""
+    slept: list[float] = []
+
+    async def fake_sleep(x: float) -> None:
+        slept.append(x)
+
+    monkeypatch.setattr(client.asyncio, "sleep", fake_sleep)
+    calls = []
+
+    def handler(r: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) <= 2:  # both keys limited on the first round
+            return httpx.Response(429, content=b'{"error":{"message":"Please try again in 4.2s."}}')
+        return httpx.Response(200, content=sse("ok"))
+
+    use_transport(monkeypatch, handler)
+    chunks = collect(s(**FB), HELLO)
+    assert [c.delta["content"] for c in chunks] == ["ok"]
+    assert slept == [4.7]
+    assert client.breakers["fallback"].fails == 0
+
+
+def test_rate_limit_too_long_or_repeated_gives_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_sleep(_x: float) -> None:
+        pass
+
+    monkeypatch.setattr(client.asyncio, "sleep", fake_sleep)
+    use_transport(monkeypatch, lambda r: httpx.Response(429, content=b"try again in 90s"))
+    with pytest.raises(client.LLMUnavailable, match="rate limited"):
+        collect(s(**FB), HELLO)
+    use_transport(monkeypatch, lambda r: httpx.Response(429, headers={"retry-after": "2"}))
+    with pytest.raises(client.LLMUnavailable, match="rate limited"):
+        collect(s(**FB), HELLO)  # 1 try + 2 retries, then the apology
+    assert client.breakers["fallback"].fails == 0
 
 
 def test_all_down_raises(monkeypatch: pytest.MonkeyPatch) -> None:

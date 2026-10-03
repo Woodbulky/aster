@@ -2,7 +2,7 @@
 
 Aster is a multilingual (Marathi / Hindi / English, code-mixed OK), voice + chat AI assistant with a cute selectable avatar ("Aster"). It helps a student:
 1. sign in and build a reusable profile,
-2. pick a form (demo: MahaDBT scholarships),
+2. pick any scholarship form (verified packs: MahaDBT, NSP, LIC; anything else is researched live),
 3. research the scheme's eligibility + required documents (with sources),
 4. upload documents → OCR → source-linked fields → contradiction checks → user resolves,
 5. fill the official portal themselves while Aster watches a shared screen and guides them field by field by voice.
@@ -51,7 +51,7 @@ web/
   src/app/            (auth)/login, onboarding, chat/[sessionId], fill/[sessionId], profile
   src/components/     avatar/, cards/, chat/, voice/, fill/
   src/lib/            supabase/, ws/, i18n/, database.types.ts
-knowledge/mahadbt/    verified scheme packs (JSON)
+knowledge/<portal>/   scheme packs (JSON) + _portal.json; _TEMPLATE.scheme.json
 ops/phone/            optional backup: phone server scripts (own tunnel config, n8n-safe)
 gpu/                  Kaggle notebook
 ```

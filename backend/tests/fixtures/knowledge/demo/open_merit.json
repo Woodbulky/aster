@@ -1,0 +1,24 @@
+{
+  "scheme_key": "demo.open_merit",
+  "portal": "demo",
+  "status": "verified",
+  "verified_by": "test",
+  "verified_on": "2026-10-03",
+  "name": { "en": "Open Merit" },
+  "department": "Demo dept",
+  "official_urls": ["https://scholarships.demo.gov.in/open"],
+  "summary": { "en": "Merit aid for open category." },
+  "criteria": [
+    {
+      "id": "open", "text": { "en": "General category" },
+      "logic": { "in": [{ "var": "profile.category" }, ["Open", "EWS"]] },
+      "ask_if_unknown": { "field_key": "category" },
+      "source": { "url": "https://scholarships.demo.gov.in/open", "quote": "Admission under the general category." }
+    },
+    {
+      "id": "hsc", "text": { "en": "12th with 60%" },
+      "logic": { ">=": [{ "var": "profile.hsc_percentage" }, 60] },
+      "source": { "url": "https://scholarships.demo.gov.in/open", "quote": "Passed Class XII with at least 60% marks." }
+    }
+  ]
+}

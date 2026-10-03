@@ -1,0 +1,111 @@
+{
+  "scheme_key": "nsp.csss_college_university",
+  "portal": "nsp",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": null,
+  "name": {
+    "en": "Central Sector Scheme of Scholarship for College and University Students (PM-USP CSSS)",
+    "mr": "महाविद्यालय व विद्यापीठ विद्यार्थ्यांसाठी केंद्रीय क्षेत्र शिष्यवृत्ती योजना",
+    "hi": "कॉलेज और विश्वविद्यालय छात्रों के लिए केंद्रीय क्षेत्र छात्रवृत्ति योजना"
+  },
+  "department": "Department of Higher Education, Ministry of Education, Government of India",
+  "official_urls": [
+    "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+    "https://scholarships.gov.in"
+  ],
+  "summary": {
+    "en": "₹12,000 a year (₹20,000 at PG level) for 12th-board toppers (above the 80th percentile) in regular degree courses, with family income up to ₹4.5 lakh.",
+    "mr": "",
+    "hi": ""
+  },
+  "criteria": [
+    {
+      "id": "top_80_percentile",
+      "text": {
+        "en": "Above the 80th percentile of your 12th board and stream",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+        "quote": "Students who are above 80th percentile of successful candidates in the relevant stream from the respective Board of Examination in Class XII"
+      }
+    },
+    {
+      "id": "regular_degree",
+      "text": {
+        "en": "Regular degree course (not distance, correspondence or diploma)",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+        "quote": "Pursuing regular degree courses and not correspondence or distance mode or pursuing Diploma courses"
+      }
+    },
+    {
+      "id": "income_4_5_lakh",
+      "text": {
+        "en": "Gross family income ≤ ₹4,50,000",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          450000
+        ]
+      },
+      "source": {
+        "url": "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+        "quote": "Students with gross parental/family income upto ₹ 4.5 lakh per annum are eligible"
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
+      }
+    },
+    {
+      "id": "no_other_scheme",
+      "text": {
+        "en": "Not getting any other merit or state scholarship, fee waiver or reimbursement",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+        "quote": "Not availing benefit of any other merit scholarship schemes, State run scholarship schemes, fee waiver, reimbursement scheme."
+      }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Income certificate (fresh applicants only)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://scholarships.gov.in/public/schemeGuidelines/CSSS_GUIDLINES_07022024_updated.pdf",
+        "quote": "Income certificate will be required only for the fresh applicants"
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [],
+  "notes": [
+    "Applies from academic year 2022-23 onwards; NSP publishes the yearly dates.",
+    "Cannot be combined with a state scholarship such as MahaDBT schemes (criterion above).",
+    "Renewal needs 50% marks and 75% attendance each year (guidelines 4.viii)."
+  ]
+}

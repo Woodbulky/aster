@@ -30,7 +30,7 @@ External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-
 ## Fallback chains (implemented in code, each with a timeout)
 | Capability | Chain | Timeout |
 |---|---|---|
-| LLM chat/tools | Kaggle `/v1` → `FALLBACK_LLM_*` (OpenAI-compatible) | first token 8 s |
+| LLM chat/tools | Kaggle `/v1` → `FALLBACK_LLM_*` (OpenAI-compatible) | first chunk 8 s; 30 s when tools are offered (Ollama sends a tool call only once complete). A 429 waits (≤ 30 s, 2 retries) and does not trip the breaker |
 | Vision (docs/screen) | Kaggle `/v1` (qwen3-vl) → fallback LLM (must be vision-capable) | 20 s |
 | STT | Sarvam → Kaggle `/asr` (hi/mr only; used even when `LLM_PRIMARY=fallback`) | 6 s |
 | TTS | Sarvam → client `speechSynthesis` (`tts_unavailable` text-only event) | 5 s |

@@ -10,9 +10,9 @@
 | Phase | Enter when | Exit to | Allowed tools |
 |---|---|---|---|
 | `onboarding` | profile core fields incomplete | `choose_form` when core fields confirmed | `get_profile`, `propose_profile_update`, `explain_why_asked` |
-| `choose_form` | onboarding done | `research` after `set_form` | `get_profile`, `list_supported_forms`, `suggest_schemes`, `set_form` |
-| `research` | form set | `eligibility` after `save_research` | `get_knowledge_pack`, `search_web`, `fetch_url`, `read_pdf`, `save_research` |
-| `eligibility` | research saved | `documents` when the user wants to continue | `check_eligibility`, `get_profile`, `propose_profile_update`, `fetch_url` |
+| `choose_form` | onboarding done | `research` once a scheme is set (`scheme_key` or `scheme_name`) | `get_profile`, `list_supported_forms`, `suggest_schemes`, `set_form` |
+| `research` | scheme set | `eligibility` when `research_results` exist for the current scheme | `get_knowledge_pack`, `search_web`, `fetch_url`, `read_pdf`, `save_research`, `suggest_schemes`, `set_form` |
+| `eligibility` | research saved | `documents` when the user wants to continue (M6); back to `research` if the user switches scheme | `check_eligibility`, `get_profile`, `propose_profile_update`, `fetch_url`, `suggest_schemes`, `set_form` |
 | `documents` | user continues | `verification` when all required docs are uploaded or the user says continue | `request_documents`, `get_document_status`, `explain_why_asked` |
 | `verification` | docs present | `ready` when no open blocking flags (or the user acknowledges) | `run_verification`, `list_flags`, `ask_resolution`, `get_field`, `explain_why_asked` |
 | `ready` | — | `form_fill` on user yes | `readiness_summary`, `start_form_fill` |
@@ -30,14 +30,14 @@ A `card` is a UI payload sent to the client (see `docs/API.md`). Cards are how t
 | `propose_profile_update` | `updates: {field_key: value}`, `evidence: "voice"\|"text"` | Card `confirm_profile`. Nothing is saved until the user confirms (REST `POST /profile/confirm`). `message_id` (the user turn) is set by the orchestrator, never by the LLM. Values are validated like `PUT /api/profile`; gender/category must be the profile form's options |
 | `explain_why_asked` | `field_key` | Template explanation in the user's language + source (pack/GR) |
 | `list_supported_forms` | — | Portals with packs available |
-| `suggest_schemes` | `portal` | Runs `check_eligibility` over all packs → top matches with reasons. Card `scheme_suggestions` |
-| `set_form` | `portal`, `scheme_key?` | Updates `form_sessions`; `portal_url` is always the official URL from code (guardrail 8), `scheme_key` must be a verified pack |
-| `get_knowledge_pack` | `scheme_key` | Pack JSON if `status=verified` |
+| `suggest_schemes` | `portal?` | Evaluates every pack against the profile → top 6 with met/not met/unknown counts. Card `scheme_suggestions` |
+| `set_form` | `scheme_key` \| `scheme_name` (exactly one) | Updates `form_sessions`. With a pack: `portal`, `scheme_name`, and `portal_url` from `_portal.json` (never from the LLM, guardrail 8). Any other scholarship: `scheme_name` only, no URL |
+| `get_knowledge_pack` | — | The session's pack (compact). Saves `research_results` origin=pack, which moves the phase on |
 | `search_web` | `query`, `prefer_domains?: string[]` | Top results (title, url, snippet). Official domains ranked first |
-| `fetch_url` | `url` | Clean text (≤ 20k chars stored, 3k returned) + `content_id` |
-| `read_pdf` | `url` or `document_id` | Text via pymupdf. If scanned → page images → GPU `/ocr` |
-| `save_research` | `kind: eligibility\|documents`, `items: [{text, source_url, quote, content_id}]` | **Validator:** `quote` must appear (normalised) in the stored content for `content_id`, else the item is rejected. Saves to `research_results`. Card `research_summary` |
-| `check_eligibility` | `scheme_key` | Deterministic evaluation of pack `criteria[].logic` against the profile → per-criterion `met\|not_met\|unknown` + reason + source. Card `eligibility` |
+| `fetch_url` | `url`, `focus?` | Whole-page text (≤ 100k chars stored in `fetched_content`; ~2k most relevant chars returned) + `content_id`. http(s) to public IPs only |
+| `read_pdf` | `url`, `focus?` | Same as `fetch_url`; pymupdf, scanned pages → GPU `/ocr` (≤ 15 pages). `document_id` comes with M6 |
+| `save_research` | `items: [{kind: eligibility\|documents, text, source_url, quote, content_id}]` (one call) | **Validator:** the `content_id` must be this session's, `source_url` must be that page, the quote ≥ 15 chars and found (normalised) in its stored text, else the item is rejected. Saves `research_results` origin=live per kind. Card `research_summary` |
+| `check_eligibility` | — | Pack: deterministic evaluation of `criteria[].logic` against the profile → per-criterion `met\|not_met\|unknown` + reason ("… — per <site>") + source + `ask_field`. Live scheme: every saved rule `unknown`/unverified. Card `eligibility` |
 | `request_documents` | `doc_types[]` | Card `document_checklist` (from the pack's `documents`, conditional on the profile) |
 | `get_document_status` | — | Uploaded docs, OCR/extraction status |
 | `run_verification` | — | Runs the pipeline in `docs/VERIFICATION.md` → flags |

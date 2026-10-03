@@ -15,11 +15,14 @@ export type Status = "connecting" | "open" | "offline" | "denied";
 
 const NO_RETRY = new Set([4400, 4401, 4404]); // bad hello / signed out / not your session
 
-/** History (user + assistant messages, pending confirm cards) via RLS, so a reload shows the
- * conversation so far. */
+/** Cards worth showing again after a reload (the result of a check, not a question). */
+const KEPT_CARDS = ["check_eligibility", "save_research"];
+
+/** History (user + assistant messages, pending confirm cards, eligibility/research cards) via
+ * RLS, so a reload shows the conversation so far. */
 async function loadHistory(sessionId: string): Promise<Item[]> {
   const sb = createClient();
-  const [msgs, props] = await Promise.all([
+  const [msgs, props, tools] = await Promise.all([
     sb
       .from("messages")
       .select("id, role, content, lang, created_at")
@@ -31,6 +34,13 @@ async function loadHistory(sessionId: string): Promise<Item[]> {
       .select("id, updates, created_at")
       .eq("session_id", sessionId)
       .eq("status", "pending")
+      .order("created_at"),
+    sb
+      .from("messages")
+      .select("id, tool_payload, created_at")
+      .eq("session_id", sessionId)
+      .eq("role", "tool")
+      .in("tool_name", KEPT_CARDS)
       .order("created_at"),
   ]);
   const rows: { at: string; item: Item }[] = [
@@ -45,6 +55,10 @@ async function loadHistory(sessionId: string): Promise<Item[]> {
         card: { card_id: p.id, kind: "confirm_profile", payload: { proposal_id: p.id, updates: p.updates as ConfirmProfilePayload["updates"] } },
       } as Item,
     })),
+    ...(tools.data ?? []).flatMap((m) => {
+      const card = (m.tool_payload as { result?: { card?: Card | null } } | null)?.result?.card;
+      return card ? [{ at: m.created_at, item: { kind: "card", card } as Item }] : [];
+    }),
   ];
   return rows.sort((a, b) => a.at.localeCompare(b.at)).map((r) => r.item);
 }

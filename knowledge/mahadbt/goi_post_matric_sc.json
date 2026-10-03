@@ -1,0 +1,249 @@
+{
+  "scheme_key": "mahadbt.goi_post_matric_sc",
+  "portal": "mahadbt",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": null,
+  "name": {
+    "en": "Government of India Post-Matric Scholarship (SC)",
+    "mr": "भारत सरकार मॅट्रिकोत्तर शिष्यवृत्ती (अनुसूचित जाती)",
+    "hi": "भारत सरकार पोस्ट-मैट्रिक छात्रवृत्ति (अनुसूचित जाति)"
+  },
+  "department": "Social Justice and Special Assistance Department, Maharashtra",
+  "official_urls": [
+    "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B"
+  ],
+  "summary": {
+    "en": "Tuition fees, exam fees and a monthly maintenance allowance for SC / Neo-Buddhist students after 10th, with family income up to ₹2.5 lakh.",
+    "mr": "",
+    "hi": ""
+  },
+  "criteria": [
+    {
+      "id": "sc_category",
+      "text": {
+        "en": "Belongs to Scheduled Caste or Navbouddha",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.category"
+          },
+          "SC"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Student category shall belong to Scheduled caste or Navbouddha"
+      },
+      "ask_if_unknown": {
+        "field_key": "category"
+      }
+    },
+    {
+      "id": "income_2_5_lakh",
+      "text": {
+        "en": "Parents' annual income ≤ ₹2,50,000",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          250000
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "The parents/Guardian annual income shall be less than or equal to Rs. 2,50,000."
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
+      }
+    },
+    {
+      "id": "domicile_maharashtra",
+      "text": {
+        "en": "Resident of Maharashtra",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.domicile_state"
+          },
+          "Maharashtra"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Student shall belong to resident of Maharashtra"
+      },
+      "ask_if_unknown": {
+        "field_key": "domicile_state"
+      }
+    },
+    {
+      "id": "passed_ssc",
+      "text": {
+        "en": "Passed SSC (10th) or equivalent",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "!!": [
+          {
+            "var": "profile.ssc_year"
+          }
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Student should be passes SSC/equivalent Matric."
+      },
+      "ask_if_unknown": {
+        "field_key": "ssc_year"
+      }
+    },
+    {
+      "id": "max_two_professional",
+      "text": {
+        "en": "Only 2 professional courses are allowed",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Only 2 professional Courses are allowed."
+      }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Income certificate (from the Tahsildar)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Income Certificate(Provided by Tahesildar)"
+      }
+    },
+    {
+      "doc_type": "caste_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Caste certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Cast Certificate."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Marksheet of the last exam you appeared for",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Mark sheet for last appeared examination"
+      }
+    },
+    {
+      "doc_type": "hsc_marksheet",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "SSC or HSC marksheet",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Mark sheet for SSC or HSC"
+      }
+    },
+    {
+      "doc_type": "gap_certificate",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Gap certificate + self declaration (if you had a gap)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Gap & Self Declaration(if required)"
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Hostel certificate (if you live in a hostel)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Hostel Certificate (if required)"
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Father's death certificate (if applicable)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Father date Certificate(if required)"
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Husband's income certificate (if the student is a married woman)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Husband Income Certificate(if girl is married)"
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [],
+  "notes": [
+    "Failure rules (exam fee + allowance after a first failure only) are on the page and not modelled as criteria.",
+    "The page states no academic year or deadline."
+  ]
+}

@@ -63,18 +63,45 @@ def test_form_selected_card_tap(client, store: FakeStore, sid: str) -> None:
     c, llm = client
     store.profile.update(COMPLETE_PROFILE)
     store.messages.append({"id": "m0", "session_id": sid, "role": "user", "content": "hi"})
-    llm.rounds += [text("MahaDBT निवडले!")]
+    llm.rounds += [text("४ पैकी २ अटी जुळतात असे दिसते.")]
     with c.websocket_connect(f"/ws/session/{sid}") as ws:
         ws.send_json(HELLO)
         assert [m["type"] for m in until(ws, "ready")] == ["phase", "ready"]  # -> choose_form
         ws.send_json(
-            {"type": "ui_event", "name": "form_selected", "payload": {"portal": "mahadbt"}}
+            {
+                "type": "ui_event",
+                "name": "form_selected",
+                "payload": {"portal": "demo", "scheme_key": "demo.obc_aid"},
+            }
         )
         got = until(ws, "assistant_message")
-    assert {"type": "phase", "phase": "research"} in got
-    assert store.sessions[sid]["portal"] == "mahadbt"
-    assert "[UI event] The user picked mahadbt" in llm.calls[0]["messages"][-1]["content"]
-    assert llm.calls[0]["tools"] is None  # the tap set the form in code, not via the LLM
+    # set_form -> pack research -> eligibility card, all in code before the LLM speaks
+    assert [m["phase"] for m in got if m["type"] == "phase"] == ["research", "eligibility"]
+    tools = [(m["name"], m["status"]) for m in got if m["type"] == "tool_event"]
+    assert tools == [
+        (n, s)
+        for n in ("set_form", "get_knowledge_pack", "check_eligibility")
+        for s in ("started", "done")
+    ]
+    card = next(m for m in got if m["type"] == "card")
+    assert card["kind"] == "eligibility"
+    statuses = {r["id"]: r["status"] for r in card["payload"]["results"]}
+    assert statuses == {
+        "obc": "met",
+        "income": "met",
+        "domicile": "unknown",
+        "attendance": "unknown",
+    }
+    assert store.sessions[sid]["scheme_key"] == "demo.obc_aid"
+    assert {(r["kind"], r["origin"]) for r in store.research} == {
+        ("eligibility", "pack"),
+        ("documents", "pack"),
+    }
+    # the card is stored with its tool row, so a reload can show it again
+    assert any(m.get("tool_name") == "check_eligibility" for m in store.messages)
+    prompt = llm.calls[0]["messages"][-1]["content"]
+    assert "[UI event] The user picked OBC Aid" in prompt and "domicile_state" in prompt
+    assert "Current phase: eligibility" in llm.calls[0]["messages"][0]["content"]
 
 
 def test_rate_limit(client, store: FakeStore, sid: str) -> None:

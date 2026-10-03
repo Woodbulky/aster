@@ -1,0 +1,259 @@
+{
+  "scheme_key": "mahadbt.panjabrao_deshmukh_hostel_dhe",
+  "portal": "mahadbt",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": null,
+  "name": {
+    "en": "Dr. Panjabrao Deshmukh Vasatigruh Nirvah Bhatta Yojana (DHE)",
+    "mr": "डॉ. पंजाबराव देशमुख वसतिगृह निर्वाह भत्ता योजना",
+    "hi": "डॉ. पंजाबराव देशमुख छात्रावास निर्वाह भत्ता योजना"
+  },
+  "department": "Higher and Technical Education Department, Maharashtra",
+  "official_urls": [
+    "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71"
+  ],
+  "summary": {
+    "en": "Yearly hostel / living allowance for general-category and SEBC students who live away from home (hostel, PG or rented room).",
+    "mr": "",
+    "hi": ""
+  },
+  "criteria": [
+    {
+      "id": "domicile_maharashtra",
+      "text": {
+        "en": "Domicile of Maharashtra",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.domicile_state"
+          },
+          "Maharashtra"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Applicant should be Domicile of Maharashtra."
+      },
+      "ask_if_unknown": {
+        "field_key": "domicile_state"
+      }
+    },
+    {
+      "id": "income_8_lakh",
+      "text": {
+        "en": "Family annual income ≤ ₹8,00,000 (professional courses)",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          800000
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "total annual income of family/ Guardian should not be more than 8.lakh"
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
+      }
+    },
+    {
+      "id": "income_1_lakh_non_prof",
+      "text": {
+        "en": "Non-professional courses: family income ≤ ₹1,00,000",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "For Non Professional Courses, applicant should have upto 1 lakh family Annual Income."
+      }
+    },
+    {
+      "id": "general_or_sebc",
+      "text": {
+        "en": "Admission under the general category or SEBC",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "in": [
+          {
+            "var": "profile.category"
+          },
+          [
+            "Open",
+            "EWS",
+            "SEBC"
+          ]
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
+      },
+      "ask_if_unknown": {
+        "field_key": "category"
+      }
+    },
+    {
+      "id": "hosteller",
+      "text": {
+        "en": "Lives in a hostel, PG or rented room",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Applicant should be hosteller.(Govt/Private hostel/ Paying Guest/ Tenant.)"
+      }
+    },
+    {
+      "id": "first_two_children",
+      "text": {
+        "en": "Only the first two children of a family",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "As per Government Resolution first two children eligible for scheme."
+      }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "domicile_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Domicile certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Students should submit domicile certificate issued by Authorized official."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Registered labour / small landholder (Alpabhudharak) certificate, or family income certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Registered labor certificate / Alpabudharak Certificate/ Family Annual Income Certificate."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Hostel / rent document",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Hosteller Document."
+      }
+    },
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Previous year's annual income certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Students should submit previous year Annual income certificate issued by Authorized official."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Family declaration about two children",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Family Declaration Certificate about two children’s."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Attendance certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Attendance Certificate."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Previous year's marksheet",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Previous year Mark sheet."
+      }
+    },
+    {
+      "doc_type": "gap_certificate",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Gap document (if you had a gap)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Gap Related Document(if Gap is there)"
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [],
+  "notes": [
+    "VERIFY: the page says 'admission under general category and SEBC Category'. The logic also accepts EWS because EWS is a quota within the general (open) category; confirm against the GR before marking verified.",
+    "Professional courses: child of a registered labourer or small landholder, or family income up to ₹8 lakh (page text).",
+    "Separate versions of this scheme exist for DTE, Agriculture, MAFSU and others on MahaDBT; this pack is the DHE one.",
+    "The page states no deadline."
+  ]
+}

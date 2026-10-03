@@ -220,3 +220,105 @@
 - **Bug (user click-through):** switching the reply language had no effect until the user asked aloud. Cause: voice turns set the reply language from the STT-detected language, overriding the toggle; and with Marathi history, even a correct system prompt lost (Groq qwen replied in Marathi to "Reply in Hindi only", once claiming in Marathi that it answers only in Hindi).
 - **Fix:** reply language = the toggle (`hello.lang`) for every turn; the detected language is still stored on the user's message. The LLM request appends a target-language note to the newest user turn (`i18n reply_in`, e.g. "कृपया अब से केवल हिंदी में जवाब दें, मराठी में नहीं।"); stored messages are unchanged. System prompt: "Reply only in {lang} … even if earlier messages use another language".
 - **Verified:** live Groq, Marathi history + Marathi speech, toggle Hindi → Hindi 4/4 (2 more runs were rate-limit apologies, also in Hindi); toggle English → English. An English-worded note was flaky for Hindi; a bracketed note once produced "[assistant turn 4]". pytest 120 passed (new: note only on the latest user turn, stored text/lang untouched, reply lang = toggle).
+
+## 2026-10-03 · M5 Research + eligibility ✅ (packs await team verification)
+**Scope change (user):** any scholarship, not only MahaDBT. MahaDBT has separate schemes per category, and private ones (LIC etc.) count too.
+
+**What changed**
+- **Migration `0004_scheme_research`:** `form_sessions.scheme_name` (a scheme without a pack) and `research_results.scheme` (which scheme the research is about). Applied via MCP; types regenerated; advisors unchanged.
+- **Knowledge packs (all `draft`):** 7 packs, every quote copied word for word from the official page or PDF.
+  - MahaDBT: GOI Post-Matric SC, GOI Post-Matric ST, Shahu Maharaj EBC, Post-Matric OBC, Panjabrao Deshmukh hostel (DHE).
+  - LIC Golden Jubilee 2026 (general track).
+  - NSP Central Sector Scheme (CSSS).
+  - Portal metadata lives in `knowledge/<portal>/_portal.json`; `_TEMPLATE` moved to `knowledge/`.
+  - Rules that can't be checked from the profile ("no other scholarship", "first two children", hostel) are criteria with `logic: null`, so they show as ❔.
+  - **EWS is accepted for the "general category" schemes. This is flagged VERIFY in those packs' notes.**
+- `app/verify/rules_engine.py`: a JSON Logic subset with three-valued results. A missing var gives unknown; and/or follow Kleene logic. Shared with M6.
+- `app/research/`:
+  - `search.py`: Tavily `/search` with `include_domains_mode=prefer`; official domains ranked first; 10 s timeout; breaker.
+  - `fetch.py`: SSRF guard on every redirect hop (http(s), public IPs only); 5 MB / 10 s caps; whole-page text via `trafilatura.html2txt`. The library's main-content mode returned a hidden modal table on MahaDBT pages and dropped the eligibility section.
+  - `fetch.py` also has `excerpt()` (focus words counted at most twice per chunk, plus the scheme name) and `quote_in()` (NFKC, plain quotes and dashes, casefold, whitespace).
+  - `pdf.py`: pymupdf; scanned pages go to the GPU `/ocr` (≤ 15 pages).
+  - `packs.py`: the pydantic `Pack` model, loader and `validate` CLI. Logic vars must be `profile.<column>`; doc types must match the DB check constraint.
+- **Tools:**
+  - `get_knowledge_pack`, `search_web`, `fetch_url`, `read_pdf`.
+  - `save_research` (quote validator): the `content_id` must belong to this session, `source_url` must be that page, and the quote must be ≥ 15 chars and found on the page.
+  - `check_eligibility`: a pack gives ✅/❌/❔ "… — per <site>" with `ask_field`; a live scheme gives all ❔ unverified.
+  - Real `suggest_schemes`: ranked across all portals, top 6, with counts.
+  - `set_form(scheme_key | scheme_name)`.
+- **Phases:** `choose_form → research` once a scheme is set; `research ↔ eligibility` follows "research saved for the current scheme", so switching scheme goes back to research. `suggest_schemes` and `set_form` stay available in research and eligibility.
+- **Orchestrator:**
+  - `run_tool_ui` is shared by the LLM loop and card taps.
+  - Research-phase replies are held until checked. If the model typed rules after reading pages without `save_research`, the text is dropped and it is nudged to save quoted items (seen live with the 8B GPU model).
+- **Card tap** (`form_selected {scheme_key}`): `set_form` → `get_knowledge_pack` → `check_eligibility` run in code; the LLM only speaks the summary.
+- `/health`: `tavily: up|open|missing` and `packs: {usable, total}`.
+- Config: `PACKS_INCLUDE_DRAFT`, dev only, ignored when `APP_ENV=prod`; cards show DRAFT. Plus search/fetch/PDF/OCR limits.
+- **Web:**
+  - `EligibilityCard` (✅/❌/❔, reason, official quote + link, DRAFT/Unverified badges, deadline passed).
+  - `ResearchSummaryCard` (items "Unverified — from <site> on <date>", rejected count).
+  - The suggestions card shows counts.
+  - Eligibility and research cards come back after a reload (from their tool rows).
+  - Copy no longer says MahaDBT only.
+- Docs: AGENT, API, RESEARCH, PRODUCT, knowledge/README, CLAUDE.md, README.
+
+**How verified**
+- pytest **188 passed**: rules engine (24 cases); SSRF (localhost/10./169.254/192.168/::1, schemes, redirect to an internal host); HTML/PDF/size cap; scanned PDF without GPU; excerpt; quote normalisation; Tavily ranking + breaker; real packs parse offline; pack validation errors; drafts dev-only.
+- More tests: the eligibility card has no verdict wording; **a fabricated quote is rejected** (plus misattributed URL, short quote, unknown `content_id`, another session's content); a mixed save keeps only the good items; a live-research turn end to end; typed rules are held and nudged; the WS card-tap path; phases. ruff clean.
+- Web lint, typecheck, test and build pass.
+- `uv run python -m app.research.packs validate` (online): **OK**. All 7 packs: every URL loads through `fetch.py` and every quote is found.
+- **Live, real `/ws`** (real Supabase DB, Groq brain, Sarvam; JWT check bypassed for user `7704a395…`, EWS / ₹1 L / Maharashtra; `PACKS_INCLUDE_DRAFT=true`):
+  - **A** (session `7525dda6…`):
+    - Spoken "मला महाडीबीटीची शिष्यवृत्ती भरायची आहे" → Sarvam STT 0.6 s → `scheme_suggestions`: Panjabrao 3 met / 0 not met, EBC 3/0, SC 3/1, OBC 3/1, ST 2/1.
+    - Tap Panjabrao → `set_form` → research → `get_knowledge_pack` → eligibility → card (3 ✅, 3 ❔, mahadbt.maharashtra.gov.in links).
+    - Marathi summary "अधिकृत नियमांनुसार … ६ पैकी ३ अटी जुळतात … अंतिम निर्णय योजना विभागाचा असेल", spoken in 4 TTS chunks, first audio 1.1 s.
+  - **B** (session `8e610561…`, Kaggle GPU brain):
+    - "Tata Capital Pankh Scholarship" → `set_form(scheme_name)` → Tavily → 3 fetches → `save_research` kept 3 items, **rejected 1** → `research_summary` "Unverified · tatacapital.com" → eligibility.
+    - SQL: every saved quote is in its `fetched_content` text and every `source_url` matches its content.
+
+**Open issues**
+- **TEAM: verify the 7 packs.** Open every `source.url`, check every quote and value (especially the EWS note), then set `status: "verified"`, `verified_by` and `verified_on`. Until then the demo needs `PACKS_INCLUDE_DRAFT=true` (dev only); prod offers no packs.
+- **Groq free tier can't do live research:** one research turn is 4–6 LLM rounds of ~4k tokens, over 7k tokens/min, so it returned 429s. A 429 also counts as a breaker failure. Use the GPU brain (B took ~63 s) or a paid fallback.
+- The research turn on the GPU is slow (~50–60 s); tool labels show progress, but the demo should use pack schemes.
+- A live item's `text` is the model's paraphrase; only its quote is checked. The card shows both.
+- Render: check `/health` → `packs.total` = 7. `knowledge/` is outside `rootDir: backend`; if it is 0 there, the packs didn't ship.
+- Manual Chrome click-through of the new cards is pending (steps in the M5 hand-off).
+- Live test sessions `0307fa22…`, `7525dda6…`, `b7d512a3…`, `40220154…` and `8e610561…` were created on the dev account `7704a395…`.
+
+### 2026-10-03 · Follow-up: "ठीक है, अब से मैं केवल हिंदी में ही जवाब दूँगा" on every reply
+- **Bug (user screenshots):** after switching to Hindi, every reply started by acknowledging the switch, in every chat.
+  - Cause: the M4 language note ("कृपया अब से केवल हिंदी में जवाब दें…") was added to the latest user turn on every request. The model answered it as if the user had asked, then copied that line from its own history.
+- **Fix (`orchestrator.py`):**
+  - The note is added only while the last 12 messages contain another language.
+  - It is worded as a silent instruction: "(उत्तर हिंदी में लिखें। भाषा के बारे में कुछ न कहें।)", i.e. "answer in Hindi; say nothing about the language".
+  - `strip_lang_ack()` removes sentences that say "only + language + reply" from the history the model sees (so already-polluted chats recover) and from the stored/final reply as a backstop.
+- **Verified:**
+  - pytest 193 passed (new: no note when there is nothing in another language; acknowledgements dropped from history and reply; strip keeps normal sentences such as "₹1.5 lakh" and "English, Hindi or Marathi").
+  - Live, Groq, a session with Marathi history: toggle Hindi → 3/3 replies in Hindi with no acknowledgement; toggle English → English.
+- **Seen during that run:** a turn crashed with `httpx.RemoteProtocolError: Server disconnected` from the Supabase client (idle HTTP/2 connection dropped). The user saw "something went wrong". Not fixed yet.
+
+### 2026-10-03 · Follow-up: "Sorry, I can't think right now" on "reliance foundation scholarship"
+- **Cause:** `LLM_PRIMARY=fallback` (Groq only; the Kaggle GPU was up but skipped). Researching an unknown scheme takes 6–7 LLM rounds of ~4–6k tokens, and Groq allows 8k tokens/min. The 429s were treated as "provider down", so the turn ended in the apology. In the same turn a PDF read hung for 55 s and one page was fetched twice.
+- **Fixes:**
+  - `llm/client.py`: a 429 means wait, not down. It waits for Groq's "try again in Xs" or `retry-after` (≤ 30 s, at most 2 retries per call) and does not touch the breaker.
+  - `research/fetch.py`: a 20 s total download deadline (`FETCH_TOTAL_S`); the httpx timeout is only per read.
+  - `fetch_url`/`read_pdf`: reuse a page already fetched in the session.
+  - Orchestrator: tool-call markup the model types as text (`<tool_call>…`, seen on Groq after the tool cap) is never shown, spoken or stored. When the research cap is hit with pages read but nothing saved, one extra `save_research` is allowed.
+- **Verified:**
+  - pytest 198 passed (new: rate-limit wait + retry, give up when the wait is too long or keeps repeating, fetch deadline, fetch reuse, cap + markup).
+  - Live retest on Groq: no apology any more, but a research turn takes up to ~170 s (rate-limit waits) and some turns ended at the cap; these two fixes followed that run.
+- **Recommendation:** run with `LLM_PRIMARY=gpu` while Kaggle is up (Groq stays the automatic backup), or use a higher-limit hosted fallback.
+
+### 2026-10-03 · Follow-up: research on the GPU ("Let me check…" and the apology again)
+- **14:54 (GPU):** the reply was only "Let me check… Let me read…" and no tool ran. Replayed twice: the model copies earlier narration-only replies (the history keeps text, not tool calls). Fix: a research reply with no tool call is held (never shown) and nudged once to call the tool.
+- **14:51:** the model passed links without a scheme ("site.org/page") and fetch rejected them. Fix: `https://` is added, and the SSRF checks still apply.
+- **14:59 (GPU):** search → page → UG FAQ PDF read fine, then the apology. Replaying the exact request: the GPU's first chunk took **11.8 s** and was a correct `save_research` with official quotes. Ollama sends tool calls only when complete, and the 8 s first-chunk limit discarded it. Groq (the fallback) was rate-limited, partly because my own live test was running at the same time. Fix: a 30 s first-chunk limit when tools are offered.
+- pytest 201 passed.
+
+### 2026-10-03 · Follow-up: search 400, "Bajaj Finserv" promise-only reply
+- **Search "failed" (15:08):** the model passed `*.reliancefoundation.org` / `*.gov.in`, and Tavily answers 400 in prefer mode. Fix: `*.` is stripped before the call. The research prompt also forbids typing links that didn't come from a tool (it had invented `reliancefoundation.org/scholarships`). After the fix, the Reliance research worked for the user.
+- **"what about this Bajaj finserv scholarship" (eligibility step, 15:21):** the reply was three "Let me check…" sentences with no tool call, so the scheme never switched. The GPU was down (Kaggle stopped), so Groq answered.
+  - Fix: in every phase but onboarding, a reply that only promises to act (`promise_only`: Let me / I'll / देखती हूँ / पाहते …) is nudged once to call the tool, `set_form` first if the user named another scholarship.
+  - Promise sentences are also dropped from the history the model sees, since the model copies them.
+- Noted: the user's `.env` has no `PACKS_INCLUDE_DRAFT`, so `/health` shows `packs.usable: 0` until the packs are verified.
+- pytest 208 passed.
+- **Infocepts (15:32, GPU):** set_form → search → fetch → save_research worked end to end (47 s). But the closing line "3 of 5 criteria look met…" was the prompt's example, copied word for word; check_eligibility never ran. Fix: after a successful `save_research` moves the session to eligibility, `check_eligibility` runs in code and the model gets its real counts. The prompt examples now use placeholders, plus a rule: researched schemes are all unknown, never "N of M met". pytest 208 passed.

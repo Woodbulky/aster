@@ -13,7 +13,7 @@ A student talks to Aster in Marathi, Hindi or English. Aster learns their profil
 | 1 | Sign in | Google or email login | Supabase Auth; a profile row is created by trigger |
 | 2 | Meet Aster | Pick avatar + name + language | Saves `assistant_settings` |
 | 3 | Onboarding | Aster asks ~10 core details by voice/chat (name, DOB, gender, district, category, 10th/12th year + %, course + year, family income) | Agent proposes values → confirm card → saved to `profiles`. Sensitive fields (caste, religion) asked only with a short "why" + consent |
-| 4 | Choose form | "Which form?" → "MahaDBT" (+ optional portal URL) | Creates `form_sessions`. If several schemes fit, Aster suggests them from the profile |
+| 4 | Choose form | "Which scholarship?" → any name, or "MahaDBT" → a ranked card of schemes | Sets the scheme on `form_sessions`. Schemes with a pack are ranked against the profile; any other name is researched live |
 | 5 | Research | Aster says "Let me check the official rules…" (tool activity visible) | Loads the verified knowledge pack, else does live research (search → fetch → PDF). Every criterion/document has `source_url` + quote |
 | 6 | Eligibility | Card: each criterion ✅ / ❌ / ❔ with reason + source link. Spoken summary | Deterministic rules on profile vs criteria; LLM only explains |
 | 7 | Documents | Checklist card; upload or photo per item | Storage upload → GPU OCR → field extraction with line ids |
@@ -27,7 +27,7 @@ Voice and chat both work in every phase, and the user can switch at any time.
 ## Demo script (8–10 min)
 1. Login → pick avatar "Aster" → Marathi.
 2. Voice onboarding (5 answers) → confirm card.
-3. "मला MahaDBT भरायचा आहे" → research tool trace → eligibility card with sources.
+3. "मला MahaDBT भरायचा आहे" → ranked scheme card → tap one → eligibility card with sources, spoken summary.
 4. Upload Aadhaar, marksheet, income certificate, passbook → fields fill with highlighted sources.
 5. Seeded problems: name spelling mismatch on passbook + income contradiction → resolve by voice.
 6. "Let's fill" → share the portal tab → Aster in PiP guides 4–5 fields by voice, refuses to read the OTP, pauses at Submit.

@@ -3,6 +3,7 @@ voice out."""
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
 import uuid
@@ -13,8 +14,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
-from app.agent.orchestrator import run_turn, sync_phase
-from app.agent.tools import TOOLS, Ctx, run_tool
+from app.agent.orchestrator import run_tool_ui, run_turn, sync_phase
+from app.agent.tools import Ctx
 from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.deps import Db, user_from_token
@@ -33,7 +34,6 @@ from app.ws.protocol import (
     Ping,
     Pong,
     Ready,
-    ToolEvent,
     TranscriptMsg,
     TtsAudio,
     TtsUnavailable,
@@ -261,15 +261,30 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
 
 
 async def _form_selected(ctx: Ctx, send, payload: dict, turn) -> None:
-    """A tap on a scheme card sets the form in code, without asking the LLM."""
+    """A tap on a scheme card runs set_form -> get_knowledge_pack -> check_eligibility in code,
+    without asking the LLM (the demo path must not depend on the model's tool calling). The LLM
+    turn after it only speaks the summary."""
     try:
         pick = FormSelected.model_validate(payload)
     except ValidationError:
         return await send(ErrorMsg(code="bad_message", message="bad form_selected payload"))
-    label = TOOLS["set_form"].label
-    await send(ToolEvent(name="set_form", status="started", label=label))
-    res = await asyncio.to_thread(run_tool, ctx, "set_form", pick.model_dump(exclude_none=True))
-    await send(ToolEvent(name="set_form", status="done" if res.ok else "failed", label=label))
+    res = await run_tool_ui(ctx, send, "set_form", {"scheme_key": pick.scheme_key})
     if not res.ok:
         return await send(ErrorMsg(code="form_not_set", message=res.error or "form not set"))
-    await turn(ui_event=f"The user picked {res.data['portal']} from the suggestions card.")
+    name = res.data["scheme_name"]
+    await sync_phase(ctx, send)  # -> research
+    elig = None
+    if (await run_tool_ui(ctx, send, "get_knowledge_pack", {})).ok:
+        await sync_phase(ctx, send)  # -> eligibility
+        elig = await run_tool_ui(ctx, send, "check_eligibility", {})
+    if elig and elig.ok:
+        criteria = json.dumps(elig.data["criteria"], ensure_ascii=False)
+        note = (
+            f"The user picked {name}. The eligibility card is on screen: {criteria}. Summarise it "
+            "in 2-3 short sentences per the official source, never as a final verdict, and if a "
+            "criterion is unknown with an ask_field, ask for that one value. Do not call "
+            "check_eligibility again."
+        )
+    else:
+        note = f"The user picked {name} from the suggestions card."
+    await turn(ui_event=note)

@@ -1,0 +1,245 @@
+{
+  "scheme_key": "mahadbt.shahu_maharaj_ebc",
+  "portal": "mahadbt",
+  "status": "draft",
+  "verified_by": null,
+  "verified_on": null,
+  "academic_year": null,
+  "name": {
+    "en": "Rajarshi Chhatrapati Shahu Maharaj Shikshan Shulkh Shishyavrutti (EBC)",
+    "mr": "राजर्षी छत्रपती शाहू महाराज शिक्षण शुल्क शिष्यवृत्ती योजना (EBC)",
+    "hi": "राजर्षि छत्रपति शाहू महाराज शिक्षण शुल्क छात्रवृत्ति योजना (EBC)"
+  },
+  "department": "Directorate of Higher Education (DHE), Maharashtra",
+  "official_urls": [
+    "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD"
+  ],
+  "summary": {
+    "en": "Tuition and exam fee support for general-category and SEBC students in Directorate of Higher Education courses, with family income up to ₹8 lakh.",
+    "mr": "",
+    "hi": ""
+  },
+  "criteria": [
+    {
+      "id": "domicile_maharashtra",
+      "text": {
+        "en": "Domicile of Maharashtra",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "==": [
+          {
+            "var": "profile.domicile_state"
+          },
+          "Maharashtra"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Applicant should be Domicile of Maharashtra"
+      },
+      "ask_if_unknown": {
+        "field_key": "domicile_state"
+      }
+    },
+    {
+      "id": "income_8_lakh",
+      "text": {
+        "en": "Family annual income ≤ ₹8,00,000",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          800000
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Family annual income limit is upto Rs. 8.00 lakh."
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
+      }
+    },
+    {
+      "id": "general_or_sebc",
+      "text": {
+        "en": "Admission under the general category or SEBC",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": {
+        "in": [
+          {
+            "var": "profile.category"
+          },
+          [
+            "Open",
+            "EWS",
+            "SEBC"
+          ]
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
+      },
+      "ask_if_unknown": {
+        "field_key": "category"
+      }
+    },
+    {
+      "id": "first_two_children",
+      "text": {
+        "en": "Only the first two children of a family",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "As per Government Resolution first two children are eligible for scheme."
+      }
+    },
+    {
+      "id": "no_other_scholarship",
+      "text": {
+        "en": "Not taking any other scholarship or stipend",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Applicant should not avail any other scholarship or stipend."
+      }
+    },
+    {
+      "id": "not_distance",
+      "text": {
+        "en": "Not in distance, virtual or part-time education",
+        "mr": "",
+        "hi": ""
+      },
+      "logic": null,
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Students are not eligible who has taken an admission in Distance Education, virtual learning and part time courses."
+      }
+    }
+  ],
+  "documents": [
+    {
+      "doc_type": "domicile_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Domicile certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Students should submit domicile certificate issued by Authorized official."
+      }
+    },
+    {
+      "doc_type": "income_certificate",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Previous year's annual income certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Students should submit previous year Annual income certificate issued by Authorized official."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Family declaration about two children",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Family Declaration Certificate about two children’s."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Attendance certificate",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Attendance Certificate."
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": true,
+      "required_if": null,
+      "text": {
+        "en": "Previous year's marksheet",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Previous year Mark sheet."
+      }
+    },
+    {
+      "doc_type": "gap_certificate",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "Gap document (if you had a gap)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Gap Related Document(if Gap is there)"
+      }
+    },
+    {
+      "doc_type": "other",
+      "required": false,
+      "required_if": null,
+      "text": {
+        "en": "CAP document (only for B.Ed, Law, B.P.Ed, M.P.Ed)",
+        "mr": "",
+        "hi": ""
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "CAP Related document.(only for B.ed,Law, BPed,MPed)."
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [],
+  "notes": [
+    "VERIFY: the page says 'admission under general category and SEBC Category'. The logic also accepts EWS because EWS is a quota within the general (open) category; confirm against the GR before marking verified.",
+    "Students from the Maharashtra-Karnataka border area can also apply (page text); not modelled.",
+    "Benefit (50-100% of fees) depends on course, college type, gender and income; see the page table.",
+    "The page states no deadline."
+  ]
+}

@@ -330,6 +330,7 @@ export type Database = {
           portal: string | null
           portal_url: string | null
           scheme_key: string | null
+          scheme_name: string | null
           status: string
           updated_at: string
           user_id: string
@@ -341,6 +342,7 @@ export type Database = {
           portal?: string | null
           portal_url?: string | null
           scheme_key?: string | null
+          scheme_name?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -352,6 +354,7 @@ export type Database = {
           portal?: string | null
           portal_url?: string | null
           scheme_key?: string | null
+          scheme_name?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -631,6 +634,7 @@ export type Database = {
           items: Json
           kind: string
           origin: string
+          scheme: string | null
           session_id: string
           user_id: string
         }
@@ -640,6 +644,7 @@ export type Database = {
           items: Json
           kind: string
           origin: string
+          scheme: string | null
           session_id: string
           user_id: string
         }
@@ -649,6 +654,7 @@ export type Database = {
           items?: Json
           kind?: string
           origin?: string
+          scheme?: string | null
           session_id?: string
           user_id?: string
         }
