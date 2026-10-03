@@ -49,8 +49,10 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "get_profile",
         "propose_profile_update",
         "fetch_url",
+        "request_documents",
         *PICK,
     ),
+    "documents": ("request_documents", "get_document_status", "explain_why_asked"),
 }
 
 

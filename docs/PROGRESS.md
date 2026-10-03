@@ -322,3 +322,32 @@
 - Noted: the user's `.env` has no `PACKS_INCLUDE_DRAFT`, so `/health` shows `packs.usable: 0` until the packs are verified.
 - pytest 208 passed.
 - **Infocepts (15:32, GPU):** set_form → search → fetch → save_research worked end to end (47 s). But the closing line "3 of 5 criteria look met…" was the prompt's example, copied word for word; check_eligibility never ran. Fix: after a successful `save_research` moves the session to eligibility, `check_eligibility` runs in code and the model gets its real counts. The prompt examples now use placeholders, plus a rule: researched schemes are all unknown, never "N of M met". pytest 208 passed.
+
+## 2026-10-03 · M6 Documents + verification — part 1 (slice a) 🚧
+Order agreed with the user: (a) specimens + pipeline + field_review on one PDF → (b) contradictions/rules + flag cards + resolve by tap → (c) resolve by voice + readiness → (d) realtime, blur check, polish. Text-layer PDF specimens are the default demo documents.
+
+**What changed**
+- Deps: `rapidfuzz`, `indic-transliteration` (both in the fixed stack). No migration yet.
+- `scripts/make_specimens.py` → `demo/specimens/*.pdf|png` (SPECIMEN watermark, IDs invalid by design): Aadhaar, SSC, income cert (**₹1,48,000**), domicile, passbook (**"AARV SUNIL PATIL"**, name score 85.7 = minor variation).
+- `app/verify/`:
+  - `names.py`: Devanagari → ITRANS (final schwa dropped), honorifics, phonetic folds, initials; `token_set_ratio` capped by the weakest token (alone it scored Patil/Patel 94, Sharma/Verma 82).
+  - `validator.py`: value must be in the cited lines (numbers/dates parsed; Indian grouping, Devanagari digits, 2-digit exam years, spaced date separators); type checks; confidence = min line conf × 1.0/0.5 (fuzzy text).
+  - `ocr.py`: PDF text layer → GPU `/ocr` → vision LLM (lines, no bbox, 0.7; not for Aadhaar/passbook). `redact_ids` on every line; Aadhaar/passbook pages get the number drawn over and split 4-digit groups merged first.
+  - `extraction.py`: JSON mode + schema in the prompt + pydantic + one retry (Groq strict json_schema can't stream); `sensitive_kind="document_ocr"` so a fallback call is audited.
+  - `pipeline.py`: background `process_document` → masked page PNGs `<uid>/<sid>/<doc>/pN.png` → candidates in `field_values` (source_ref = document, line_ids, page, bbox). Aadhaar/passbook originals deleted.
+- `repo.add_field_value` refuses a value without `source_type` + `source_ref` (guardrail 2 in code).
+- `POST /api/sessions/{id}/documents` (202, background; retry a failed doc). No `/view` endpoint, no classifier (user-approved).
+- Tools `request_documents` (eligibility → documents, `document_checklist` card) and `get_document_status` (`field_review` card); WS `documents_requested`, `document_processed`; `run_tool_ui` announces a phase a tool moved.
+- Web: `lib/documents.ts` (upload + status poll), `DocumentChecklistCard`, `FieldReviewCard` (source chip → page with the cited line boxed; no box for vision lines), "Continue to documents" on the eligibility card.
+
+**How verified**
+- pytest **239 passed** (31 new: name-matcher spec cases, validator rejects invented / mis-cited values, years, dates, split Aadhaar groups, page masking, vision fallback without bbox). ruff, web lint/typecheck/build clean.
+- Fallback vision: Groq `qwen/qwen3.8-27b` + image + `json_object` → 200 in 1.2 s, exact transcription.
+- Live (real DB/storage/LLM, dev account, session `491067fa…`): income cert 13.6 s, 5 fields; passbook 14.3 s, 4 fields; every value with line id + bbox; SQL: 0 values without a source, 0 full numbers in OCR/fields; passbook original deleted, masked PNG checked by eye.
+- **User click-through bug:** real scanned SSC/HSC/Aadhaar read on the GPU, but Bunny said "I could not read your Class 10 marksheet". Causes: the tool said `could_not_read` for one rejected field; HSC "FEBRUARY 23" rejected as a year. Fixed both; replayed the SSC note on the real LLM 3/3 correct ("…read… 10th percentage is not found on this document").
+
+**Open issues**
+- Slices (b)–(d) not done: contradictions, rules, flags, resolve, readiness, realtime, blur check. M6 box not ticked.
+- User approved a dedicated demo account (Aarav Sunil Patil, ₹1,20,000) for the (b)/(c) acceptance runs — create it next.
+- Replacing a document adds new candidates next to the old ones; (b) must ignore candidates of superseded documents.
+- Supabase `RemoteProtocolError` on idle connections (M5) now also hits the background pipeline; add one retry.

@@ -27,6 +27,7 @@ from app.ws.protocol import (
     AudioEnd,
     AudioStart,
     ClientMsg,
+    DocumentProcessed,
     ErrorMsg,
     FormSelected,
     Hello,
@@ -249,6 +250,13 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                         lambda payload=payload: _form_selected(ctx, send, payload, text_turn),
                         preempt=False,
                     )
+                case UiEvent(name="documents_requested"):
+                    start(lambda: _documents_requested(ctx, send, text_turn), preempt=False)
+                case UiEvent(name="document_processed", payload=payload):
+                    start(
+                        lambda payload=payload: _document_processed(ctx, send, payload, text_turn),
+                        preempt=False,
+                    )
                 case UiEvent(name=event):
                     start(
                         lambda event=event: text_turn(ui_event=UI_EVENT_TEXT[event]), preempt=False
@@ -287,4 +295,39 @@ async def _form_selected(ctx: Ctx, send, payload: dict, turn) -> None:
         )
     else:
         note = f"The user picked {name} from the suggestions card."
+    await turn(ui_event=note)
+
+
+async def _documents_requested(ctx: Ctx, send, turn) -> None:
+    """ "Continue to documents" button on the eligibility card: checklist in code, then speak."""
+    res = await run_tool_ui(ctx, send, "request_documents", {})
+    if not res.ok:
+        return await send(ErrorMsg(code="documents_unavailable", message=res.error or "no scheme"))
+    data = json.dumps(res.data, ensure_ascii=False)
+    await turn(
+        ui_event="The user tapped Continue to documents. The checklist card is on screen: "
+        f"{data}. In one or two short sentences, say which required documents to upload first."
+    )
+
+
+async def _document_processed(ctx: Ctx, send, payload: dict, turn) -> None:
+    """The client saw a document finish: field review card in code, then a short spoken
+    summary."""
+    try:
+        doc_id = str(DocumentProcessed.model_validate(payload).document_id)
+    except ValidationError:
+        return await send(ErrorMsg(code="bad_message", message="bad document_processed payload"))
+    res = await run_tool_ui(ctx, send, "get_document_status", {"document_id": doc_id})
+    if not res.ok:
+        return await send(ErrorMsg(code="document_not_found", message=res.error or "not found"))
+    data = json.dumps(res.data, ensure_ascii=False)
+    if res.data["status"] == "read":
+        note = (
+            f"Document read: {data}. The field review card is on screen. In one or two short "
+            "sentences say it was read and what it shows. If not_found_on_document is not empty, "
+            "name those fields and ask the user to check them on the card; the document itself "
+            "was read fine."
+        )
+    else:
+        note = f"Document not read: {data}. Say so in one sentence with the reason given."
     await turn(ui_event=note)

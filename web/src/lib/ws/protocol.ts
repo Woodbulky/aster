@@ -2,7 +2,7 @@
 import type { Lang } from "@/lib/i18n";
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
-export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected";
+export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed";
 
 // ---------- client -> server ----------
 export type ClientMsg =
@@ -46,11 +46,40 @@ export type ResearchSummaryPayload = {
   rejected: number; // items dropped because their quote was not on the cited page
   note: string;
 };
+export type DocStatus = "missing" | "uploaded" | "processing" | "extracted" | "failed";
+export type ChecklistItem = {
+  doc_type: string;
+  label: string;
+  required: boolean;
+  source: Source | null; // null = recommended by Aster, not in the official list
+  note: string | null;
+  status: DocStatus;
+  document_id: string | null;
+};
+export type DocumentChecklistPayload = { session_id: string; scheme: string; items: ChecklistItem[]; others: string[]; note: string };
+export type BBox = [number, number, number, number]; // x0, y0, x1, y1 in page pixels
+/** Where a value came from (guardrail 2). Document sources point at OCR lines; bbox null = read by the vision model (no box). */
+export type FieldSource = { document_id: string; doc_type: string; line_ids: string[]; page: number; bbox: (BBox | null)[] };
+export type PageMeta = { path: string; width: number; height: number };
+export type ReviewField = { id: string; field_key: string; label: string; value: string; confidence: number | null; low_confidence: boolean; source: FieldSource };
+export type FieldReviewPayload = {
+  document_id: string;
+  doc_type: string;
+  label: string;
+  status: DocStatus;
+  error: string | null;
+  engine: string | null;
+  pages: PageMeta[];
+  fields: ReviewField[];
+  unreadable: string[];
+};
 export type Card =
   | { card_id: string; kind: "confirm_profile"; payload: ConfirmProfilePayload }
   | { card_id: string; kind: "scheme_suggestions"; payload: SchemeSuggestionsPayload }
   | { card_id: string; kind: "eligibility"; payload: EligibilityPayload }
-  | { card_id: string; kind: "research_summary"; payload: ResearchSummaryPayload };
+  | { card_id: string; kind: "research_summary"; payload: ResearchSummaryPayload }
+  | { card_id: string; kind: "document_checklist"; payload: DocumentChecklistPayload }
+  | { card_id: string; kind: "field_review"; payload: FieldReviewPayload };
 
 // ---------- server -> client ----------
 export type ServerMsg =

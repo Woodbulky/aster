@@ -40,7 +40,7 @@ function parse<T>(raw: string | null | undefined): T | null {
 }
 
 /** Backend call with the Supabase access token. Throws a readable Error on failure. */
-async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = await accessToken();
   if (!token) throw new Error("You're signed out. Please sign in again.");
   let res: Response;

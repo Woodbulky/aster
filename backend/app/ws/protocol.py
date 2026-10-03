@@ -1,6 +1,7 @@
 """WS messages (docs/API.md). Mirrored in web/src/lib/ws/protocol.ts — change both together.
 Screen messages arrive with M7."""
 
+import uuid
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
@@ -27,7 +28,13 @@ class UserText(_In):
 
 class UiEvent(_In):
     type: Literal["ui_event"]
-    name: Literal["profile_confirmed", "profile_rejected", "form_selected"]
+    name: Literal[
+        "profile_confirmed",
+        "profile_rejected",
+        "form_selected",
+        "documents_requested",
+        "document_processed",
+    ]
     payload: dict[str, Any] = {}
 
 
@@ -57,6 +64,12 @@ ClientMsg = TypeAdapter(
         Field(discriminator="type"),
     ]
 )
+
+
+class DocumentProcessed(_In):
+    """ui_event document_processed payload: the client saw the document finish (status poll)."""
+
+    document_id: uuid.UUID
 
 
 class FormSelected(_In):

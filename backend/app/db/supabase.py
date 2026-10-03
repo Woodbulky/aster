@@ -178,3 +178,68 @@ def write_audit(
         "payload": payload,
     }
     db.table("audit_events").insert(row).execute()
+
+
+# ---------- documents & fields (M6) ----------
+BUCKET = "documents"
+
+
+def add_document(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
+    row = {**values, "user_id": user_id, "session_id": session_id}
+    return _one(db.table("documents").insert(row).execute().data)
+
+
+def get_document(db: Client, user_id: str, document_id: str) -> Row | None:
+    q = db.table("documents").select("*").eq("id", document_id).eq("user_id", user_id)
+    return _one(q.limit(1).execute().data)
+
+
+def update_document(db: Client, user_id: str, document_id: str, values: Row) -> None:
+    db.table("documents").update(values).eq("id", document_id).eq("user_id", user_id).execute()
+
+
+def list_documents(db: Client, user_id: str, session_id: str) -> list[Row]:
+    q = db.table("documents").select("id,doc_type,status,error,created_at,page_count")
+    return q.eq("session_id", session_id).eq("user_id", user_id).order("created_at").execute().data
+
+
+def storage_exists(db: Client, user_id: str, folder: str, name: str) -> bool:
+    """folder must start with the user's own id (storage RLS layout)."""
+    assert folder.startswith(f"{user_id}/")
+    files = db.storage.from_(BUCKET).list(folder, {"search": name})
+    return any(f.get("name") == name for f in files)
+
+
+def add_field_value(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
+    """Guardrail 2, in code: no source, no value."""
+    if not values.get("source_type") or not values.get("source_ref"):
+        raise ValueError("a field value needs source_type and source_ref")
+    row = {**values, "user_id": user_id, "session_id": session_id}
+    return _one(db.table("field_values").insert(row).execute().data)
+
+
+def list_field_values(db: Client, user_id: str, session_id: str) -> list[Row]:
+    q = db.table("field_values").select("*").eq("session_id", session_id).eq("user_id", user_id)
+    return q.order("created_at").execute().data
+
+
+def add_flag(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
+    row = {**values, "user_id": user_id, "session_id": session_id}
+    return _one(db.table("flags").insert(row).execute().data)
+
+
+def update_flag(db: Client, user_id: str, flag_id: str, values: Row) -> None:
+    db.table("flags").update(values).eq("id", flag_id).eq("user_id", user_id).execute()
+
+
+def list_flags(db: Client, user_id: str, session_id: str, status: str | None = None) -> list[Row]:
+    q = db.table("flags").select("*").eq("session_id", session_id).eq("user_id", user_id)
+    if status:
+        q = q.eq("status", status)
+    return q.order("created_at").execute().data
+
+
+def add_rule_evaluations(db: Client, user_id: str, session_id: str, rows: list[Row]) -> None:
+    if rows:
+        full = [{**r, "user_id": user_id, "session_id": session_id} for r in rows]
+        db.table("rule_evaluations").insert(full).execute()

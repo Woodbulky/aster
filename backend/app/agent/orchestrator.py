@@ -263,8 +263,11 @@ async def run_tool_ui(
     label = TOOLS[name].label if name in TOOLS else name
     await send(ToolEvent(name=name, status="started", label=label))
     await send(AgentState(state="thinking", detail=label))
+    phase = ctx.session["phase"]
     res = await _db(run_tool, ctx, name, raw_args)
     await send(ToolEvent(name=name, status="done" if res.ok else "failed", label=label))
+    if ctx.session["phase"] != phase:  # a tool that moves the phase itself (request_documents)
+        await send(PhaseMsg(phase=ctx.session["phase"]))
     if res.card:
         await send(CardMsg(**res.card.model_dump()))
     args = raw_args if isinstance(raw_args, str) else json.dumps(raw_args, ensure_ascii=False)

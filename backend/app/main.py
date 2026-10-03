@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import me, sessions
+from app.api import documents, me, sessions
 from app.config import Settings, get_settings
 from app.llm.client import breakers, fallback_ready, gpu_url, route
 from app.research.packs import all_packs, usable_packs
@@ -23,6 +23,7 @@ app.add_middleware(
 )
 app.include_router(me.router)
 app.include_router(sessions.router)
+app.include_router(documents.router)
 app.include_router(voice.router)
 
 

@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { Avatar } from "@/components/avatar/Avatar";
 import { ConfirmProfileCard } from "@/components/cards/ConfirmProfileCard";
+import { DocumentChecklistCard } from "@/components/cards/DocumentChecklistCard";
+import { FieldReviewCard } from "@/components/cards/FieldReviewCard";
 import { EligibilityCard } from "@/components/cards/EligibilityCard";
 import { ResearchSummaryCard } from "@/components/cards/ResearchSummaryCard";
 import { SchemeSuggestionsCard } from "@/components/cards/SchemeSuggestionsCard";
@@ -37,6 +39,9 @@ const PHASE_LABEL: Record<string, string> = {
   choose_form: "Choosing a scholarship",
   research: "Looking up the rules",
   eligibility: "Checking the rules",
+  documents: "Collecting documents",
+  verification: "Checking your documents",
+  ready: "Ready to fill the form",
 };
 
 const STATUS_LABEL: Record<Exclude<Status, "open">, string> = {
@@ -163,7 +168,11 @@ export default function ChatSessionPage() {
                           onPick={(o) => sendUi("form_selected", { portal: o.portal, scheme_key: o.scheme_key })}
                         />
                       ) : card.kind === "eligibility" ? (
-                        <EligibilityCard payload={card.payload} />
+                        <EligibilityCard payload={card.payload} onContinue={phase === "eligibility" ? () => sendUi("documents_requested") : undefined} />
+                      ) : card.kind === "document_checklist" ? (
+                        <DocumentChecklistCard payload={card.payload} onProcessed={(id) => sendUi("document_processed", { document_id: id })} />
+                      ) : card.kind === "field_review" ? (
+                        <FieldReviewCard payload={card.payload} />
                       ) : (
                         <ResearchSummaryCard payload={card.payload} />
                       )}
