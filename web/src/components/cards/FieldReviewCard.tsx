@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import type { BBox, FieldReviewPayload, PageMeta, ReviewField } from "@/lib/ws/protocol";
 
 /** The page image with the cited lines boxed. No bbox (read by the vision model) = no box. */
-function DocumentViewer({ title, page, boxes, onClose }: { title: string; page: PageMeta; boxes: BBox[]; onClose: () => void }) {
+export function DocumentViewer({ title, page, boxes, onClose }: { title: string; page: PageMeta; boxes: BBox[]; onClose: () => void }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     pageUrl(page.path).then(setUrl, () => setUrl(null));

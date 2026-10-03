@@ -18,8 +18,9 @@ EXPECTED: dict[str, tuple[str, ...]] = {
     "aadhaar": ("full_name", "dob", "gender", "aadhaar_last4"),
     "ssc_marksheet": ("full_name", "mother_name", "ssc_year", "ssc_percentage", "ssc_board"),
     "hsc_marksheet": ("full_name", "mother_name", "hsc_year", "hsc_percentage", "hsc_board"),
+    # No full_name: income certificates are often issued in a parent's name (seen live), which
+    # would raise a false name mismatch.
     "income_certificate": (
-        "full_name",
         "annual_family_income",
         "income_cert_number",
         "income_cert_issue_date",
@@ -32,6 +33,26 @@ EXPECTED: dict[str, tuple[str, ...]] = {
     "fee_receipt": ("full_name", "institute_name", "current_course", "current_year"),
     "admission_letter": ("full_name", "institute_name", "current_course", "current_year"),
 }
+DOC_LABELS = {
+    "aadhaar": "Aadhaar card",
+    "ssc_marksheet": "Class 10 marksheet",
+    "hsc_marksheet": "Class 12 marksheet",
+    "income_certificate": "Income certificate",
+    "caste_certificate": "Caste certificate",
+    "caste_validity": "Caste validity certificate",
+    "domicile_certificate": "Domicile certificate",
+    "bank_passbook": "Bank passbook",
+    "fee_receipt": "Fee receipt",
+    "admission_letter": "Admission letter",
+    "gap_certificate": "Gap certificate",
+    "other": "Other document",
+}
+
+
+def field_label(key: str) -> str:
+    return key.replace("_", " ").replace("ssc", "10th").replace("hsc", "12th").capitalize()
+
+
 HINTS = {
     "full_name": "the student's own name only, without Shri/Kumari/Mr",
     "aadhaar_last4": "the 4 digits in '[number ending NNNN]'",

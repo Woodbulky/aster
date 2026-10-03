@@ -4,38 +4,24 @@ documents.status column (uploaded -> processing -> extracted | failed)."""
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
+
+import httpx
+from storage3.exceptions import StorageApiError
 
 from app.config import Settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable
 from app.verify import names
-from app.verify.extraction import EXPECTED, extract
-from app.verify.ocr import NO_VISION_FALLBACK, OcrUnavailable, read_lines, render
+from app.verify.checks import run_checks
+from app.verify.extraction import DOC_LABELS, EXPECTED, extract, field_label
+from app.verify.ocr import NO_VISION_FALLBACK, OcrUnavailable, Page, read_lines, render
 from app.verify.validator import KIND, check
 
 log = logging.getLogger(__name__)
 LOW_CONFIDENCE = 0.6
-
-DOC_LABELS = {
-    "aadhaar": "Aadhaar card",
-    "ssc_marksheet": "Class 10 marksheet",
-    "hsc_marksheet": "Class 12 marksheet",
-    "income_certificate": "Income certificate",
-    "caste_certificate": "Caste certificate",
-    "caste_validity": "Caste validity certificate",
-    "domicile_certificate": "Domicile certificate",
-    "bank_passbook": "Bank passbook",
-    "fee_receipt": "Fee receipt",
-    "admission_letter": "Admission letter",
-    "gap_certificate": "Gap certificate",
-    "other": "Other document",
-}
-
-
-def field_label(key: str) -> str:
-    return key.replace("_", " ").replace("ssc", "10th").replace("hsc", "12th").capitalize()
 
 
 def normalized_value(field_key: str, value: str) -> str:
@@ -43,11 +29,40 @@ def normalized_value(field_key: str, value: str) -> str:
 
 
 async def _db(fn: Callable[..., Any], *a: Any) -> Any:
-    return await asyncio.to_thread(fn, *a)
+    """One retry on a dropped connection (the Supabase client's idle HTTP/2 connection is closed
+    after a few quiet minutes; seen live) or a Storage 5xx."""
+    try:
+        return await asyncio.to_thread(fn, *a)
+    except (httpx.TransportError, StorageApiError) as e:
+        # Storage 5xx came back once mid-demo-run (Cloudflare error page); a 4xx is not retried.
+        if isinstance(e, StorageApiError) and not str(e.status).startswith("5"):
+            raise
+        log.warning("db call retried after %s", type(e).__name__)
+        return await asyncio.to_thread(fn, *a)
+
+
+# The open conversation hears when a document is done, from the server, not from the browser's
+# poll (seen live: no "document read" event ever arrived, so no cards and no summary).
+# ponytail: in-process, one backend instance; a shared bus (Realtime/Redis) if it ever scales out.
+_listeners: dict[str, set[Callable[[str], None]]] = {}
+
+
+def subscribe(session_id: str, cb: Callable[[str], None]) -> Callable[[], None]:
+    _listeners.setdefault(session_id, set()).add(cb)
+    return lambda: _listeners.get(session_id, set()).discard(cb)
+
+
+def _notify(session_id: str, document_id: str) -> None:
+    for cb in list(_listeners.get(session_id, ())):
+        try:
+            cb(document_id)
+        except Exception:
+            log.exception("document listener failed")
 
 
 async def process_document(s: Settings, user_id: str, session_id: str, document_id: str) -> None:
-    """Never raises: failures end in status=failed with a short error code."""
+    """Never raises: failures end in status=failed with a short error code. Listeners of the
+    session are told when it ends either way."""
     db = repo.get_db()
     doc = await _db(repo.get_document, db, user_id, document_id)
     if not doc or doc["session_id"] != session_id:
@@ -61,30 +76,46 @@ async def process_document(s: Settings, user_id: str, session_id: str, document_
         err = "ocr_unavailable"
     except LLMUnavailable:
         err = "llm_unavailable"
-    except Exception:
+    except Exception as e:
         log.exception("document pipeline failed")  # no document content in logs
-        err = "internal"
+        err = f"internal:{type(e).__name__}"
     else:
-        return
-    await _db(repo.update_document, db, user_id, document_id, {"status": "failed", "error": err})
+        err = None
+    if err:
+        await _db(
+            repo.update_document, db, user_id, document_id, {"status": "failed", "error": err}
+        )
+    _notify(session_id, document_id)
+
+
+def _stored_pages(bucket: Any, folder: str) -> list[Page]:
+    names = sorted(f["name"] for f in bucket.list(folder) if re.fullmatch(r"p\d+\.png", f["name"]))
+    return [render(bucket.download(f"{folder}/{n}"), "image/png")[0] for n in names]
 
 
 async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[str, Any]) -> None:
     doc_type = doc["doc_type"]
     bucket = db.storage.from_(repo.BUCKET)
-    data = await _db(bucket.download, doc["storage_path"])
-    pages = await _db(render, data, doc["mime"])
+    folder = doc["storage_path"].rsplit(".", 1)[0]  # <uid>/<sid>/<document_id>
+    try:
+        data = await _db(bucket.download, doc["storage_path"])
+        pages = await _db(render, data, doc["mime"])
+    except StorageApiError:
+        # A retry after the original was deleted (it held a full ID number): read the masked
+        # pages kept from the first attempt.
+        pages = await _db(_stored_pages, bucket, folder)
+        if not pages:
+            raise
     lines, engine = await read_lines(s, pages, doc_type, user_id, session_id)
 
-    folder = doc["storage_path"].rsplit(".", 1)[0]  # <uid>/<sid>/<document_id>
     page_meta = []
     for i, p in enumerate(pages):
         path = f"{folder}/p{i + 1}.png"
         opts = {"content-type": "image/png", "upsert": "true"}
         await _db(bucket.upload, path, p.png, opts)
         page_meta.append({"path": path, "width": p.width, "height": p.height})
-    if doc_type in NO_VISION_FALLBACK:
-        # Guardrail 6: the upload holds the full number; only the masked pages are kept.
+    if doc_type in NO_VISION_FALLBACK or any(p.masked for p in pages):
+        # Guardrail 6: the upload holds a full ID number; only the masked pages are kept.
         await _db(bucket.remove, [doc["storage_path"]])
 
     items = await extract(s, doc_type, lines, user_id, session_id)
@@ -129,6 +160,14 @@ async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[st
         "failed": failed,
         "missing": missing,
     }
+    # Flags are written before the status flips, so the client's "read" event sees them.
+    try:
+        session = await _db(repo.get_session, db, user_id, session_id)
+        await asyncio.to_thread(
+            run_checks, db, user_id, session, include_missing=False, just_read=doc["id"]
+        )
+    except Exception:
+        log.exception("checks after extraction failed")  # the document itself was read
     await _db(
         repo.update_document,
         db,

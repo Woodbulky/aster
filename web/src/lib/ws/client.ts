@@ -16,7 +16,7 @@ export type Status = "connecting" | "open" | "offline" | "denied";
 const NO_RETRY = new Set([4400, 4401, 4404]); // bad hello / signed out / not your session
 
 /** Cards worth showing again after a reload (the result of a check, not a question). */
-const KEPT_CARDS = ["check_eligibility", "save_research", "request_documents", "get_document_status"];
+const KEPT_CARDS = ["check_eligibility", "save_research", "request_documents", "get_document_status", "ask_resolution", "resolve_flag", "readiness_summary"];
 
 /** History (user + assistant messages, pending confirm cards, eligibility/research cards) via
  * RLS, so a reload shows the conversation so far. */

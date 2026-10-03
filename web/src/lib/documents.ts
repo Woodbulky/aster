@@ -50,3 +50,19 @@ export async function pageUrl(path: string): Promise<string | null> {
   const { data } = await createClient().storage.from(BUCKET).createSignedUrl(path, 300);
   return data?.signedUrl ?? null;
 }
+
+export type FlagState = { status: "open" | "resolved" | "acknowledged"; resolution: { reason?: string; candidate_id?: string | null; via?: string; value?: string } | null };
+
+export async function flagState(flagId: string): Promise<FlagState | null> {
+  const { data } = await createClient().from("flags").select("status, resolution").eq("id", flagId).maybeSingle();
+  return (data as FlagState | null) ?? null;
+}
+
+/** The user's answer to a flag card: a candidate or a typed value (+ reason) confirms a value;
+ * neither acknowledges it. */
+export async function answerFlag(sessionId: string, flagId: string, answer: { candidate_id?: string; value?: string; reason: string }): Promise<string> {
+  const ack = !answer.candidate_id && !answer.value;
+  const path = `/api/sessions/${sessionId}/flags/${flagId}/${ack ? "acknowledge" : "resolve"}`;
+  const res = await api<{ status: string }>("POST", path, ack ? { reason: answer.reason } : answer);
+  return res.status;
+}

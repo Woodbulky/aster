@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
-from app.agent.orchestrator import run_tool_ui, run_turn, sync_phase
+from app.agent.orchestrator import run_tool_ui, run_turn, show_new_flag_cards, sync_phase
 from app.agent.tools import Ctx
 from app.config import Settings, get_settings
 from app.db import supabase as repo
@@ -22,6 +22,8 @@ from app.deps import Db, user_from_token
 from app.speech import router as speech
 from app.speech.base import SpeechUnavailable
 from app.speech.stream import Speaker
+from app.verify import pipeline
+from app.verify.checks import flag_summary
 from app.ws.protocol import (
     AgentState,
     AudioEnd,
@@ -29,6 +31,7 @@ from app.ws.protocol import (
     ClientMsg,
     DocumentProcessed,
     ErrorMsg,
+    FlagResolved,
     FormSelected,
     Hello,
     Interrupt,
@@ -200,6 +203,14 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
             preempt=False,
         )
 
+    loop = asyncio.get_running_loop()
+
+    def document_done(doc_id: str) -> None:
+        # The pipeline may finish on another loop or thread: hand the turn to this socket's loop.
+        job = lambda: _document_processed(ctx, send, {"document_id": doc_id}, text_turn)  # noqa: E731
+        loop.call_soon_threadsafe(lambda: start(job, preempt=False))
+
+    unsubscribe = pipeline.subscribe(ctx.session["id"], document_done)
     # ponytail: per-connection limit; per-user across tabs if abuse shows up.
     recent: deque[float] = deque()
     pending: AudioStart | None = None  # audio_start seen, waiting for its binary frame
@@ -257,6 +268,11 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                         lambda payload=payload: _document_processed(ctx, send, payload, text_turn),
                         preempt=False,
                     )
+                case UiEvent(name="flag_resolved", payload=payload):
+                    start(
+                        lambda payload=payload: _flag_resolved(ctx, send, payload, text_turn),
+                        preempt=False,
+                    )
                 case UiEvent(name=event):
                     start(
                         lambda event=event: text_turn(ui_event=UI_EVENT_TEXT[event]), preempt=False
@@ -264,6 +280,7 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                 case Hello():
                     pass  # already authenticated; reconnects open a new socket
     finally:
+        unsubscribe()
         if current and not current.done():
             current.cancel()
 
@@ -321,13 +338,39 @@ async def _document_processed(ctx: Ctx, send, payload: dict, turn) -> None:
     if not res.ok:
         return await send(ErrorMsg(code="document_not_found", message=res.error or "not found"))
     data = json.dumps(res.data, ensure_ascii=False)
-    if res.data["status"] == "read":
-        note = (
-            f"Document read: {data}. The field review card is on screen. In one or two short "
-            "sentences say it was read and what it shows. If not_found_on_document is not empty, "
-            "name those fields and ask the user to check them on the card; the document itself "
-            "was read fine."
+    if res.data["status"] != "read":
+        await turn(ui_event=f"Document not read: {data}. Say so in one sentence with the reason.")
+        return
+    flags = await show_new_flag_cards(ctx, send)
+    note = (
+        f"Document read: {data}. The field review card is on screen. In one or two short "
+        "sentences say it was read and what it shows. If not_found_on_document is not empty, "
+        "name those fields and ask the user to check them on the card; the document itself was "
+        "read fine."
+    )
+    if flags:
+        note += (
+            f" Checking it against the other documents and the profile found: "
+            f"{json.dumps(flags, ensure_ascii=False)}. Their cards are on screen. Explain the "
+            "first one in one or two sentences and ask which value is right and why. Never "
+            "pick a value yourself."
         )
-    else:
-        note = f"Document not read: {data}. Say so in one sentence with the reason given."
     await turn(ui_event=note)
+
+
+async def _flag_resolved(ctx: Ctx, send, payload: dict, turn) -> None:
+    """The user answered a flag card. The phase may move (no blocking flag left -> ready)."""
+    try:
+        flag_id = str(FlagResolved.model_validate(payload).flag_id)
+    except ValidationError:
+        return await send(ErrorMsg(code="bad_message", message="bad flag_resolved payload"))
+    flag = await asyncio.to_thread(repo.get_flag, ctx.db, ctx.user_id, flag_id)
+    if not flag or flag["session_id"] != ctx.session["id"] or flag["status"] == "open":
+        return await send(ErrorMsg(code="flag_not_resolved", message="flag not found or open"))
+    left = await asyncio.to_thread(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
+    what = "picked a value" if flag["status"] == "resolved" else "acknowledged it"
+    await turn(
+        ui_event=f"The user {what} for the flag about {flag_summary(flag)['field']}. Open flags "
+        f"left: {json.dumps([flag_summary(f) for f in left], ensure_ascii=False)}. Thank them in a "
+        "few words; if a flag is left, explain the next one (its card is on screen)."
+    )

@@ -44,8 +44,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   });
 
+  // The pop-up waits for loadMe: before it returns, a new browser has no local profile even when
+  // the account has one (seen: the demo account's seeded profile was overwritten via the pop-up).
+  const [meLoaded, setMeLoaded] = useState(false);
   useEffect(() => {
-    loadMe().catch(console.error); // local choices win; this only fills an empty cache
+    loadMe() // local choices win; this only fills an empty cache
+      .catch(console.error)
+      .finally(() => setMeLoaded(true));
     createClient()
       .auth.getUser()
       .then(({ data }) => {
@@ -57,7 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   // First visit after sign-in: the profile pop-up opens by itself until something is saved or it's dismissed.
-  const showSetup = setupStep !== null || (profile === null && !dismissed);
+  const showSetup = setupStep !== null || (meLoaded && profile === null && !dismissed);
   const displayName = profile?.full_name?.trim() || user?.name || "Student";
   const pct = completion(profile);
 

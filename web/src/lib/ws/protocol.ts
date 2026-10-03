@@ -2,7 +2,7 @@
 import type { Lang } from "@/lib/i18n";
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
-export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed";
+export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed" | "flag_resolved";
 
 // ---------- client -> server ----------
 export type ClientMsg =
@@ -73,13 +73,55 @@ export type FieldReviewPayload = {
   fields: ReviewField[];
   unreadable: string[];
 };
+export type FlagCandidate = {
+  id: string;
+  field_key: string;
+  value: string;
+  source_type: string; // document | profile | voice | text | resolution
+  label: string; // "Income certificate · L3", "Your profile"
+  document_id: string | null;
+  page: PageMeta | null;
+  bbox: (BBox | null)[];
+  confidence: number | null;
+};
+/** contradiction | missing_item | low_confidence cards (one FlagCard renders all). Never resolved by Aster: the user picks + gives a reason (guardrail 3). */
+export type FlagPayload = {
+  flag_id: string;
+  session_id: string;
+  type: "contradiction" | "rule" | "missing_doc" | "low_confidence";
+  severity: "block" | "warn";
+  field_key: string | null;
+  field_label: string | null;
+  message: string;
+  candidates: FlagCandidate[];
+  can_pick: boolean;
+  can_type: boolean;
+  doc: { doc_type: string; label: string | null; source: Source | null } | null;
+  status: "open" | "resolved" | "acknowledged";
+};
+export type FlagSummary = { flag_id: string; type: string; severity: "block" | "warn"; field: string | null; message: string | null; values: string[]; status: string };
+/** Readiness gate: ready = no open blocking flag. Every value the form will use, with its source. */
+export type ReadinessPayload = {
+  session_id: string;
+  ready: boolean;
+  open_block: FlagSummary[];
+  open_warn: FlagSummary[];
+  acknowledged: (FlagSummary & { reason: string | null })[];
+  documents: string[];
+  fields: { field_key: string; label: string; value: string; source: string; confirmed: boolean }[];
+  note: string;
+};
 export type Card =
   | { card_id: string; kind: "confirm_profile"; payload: ConfirmProfilePayload }
   | { card_id: string; kind: "scheme_suggestions"; payload: SchemeSuggestionsPayload }
   | { card_id: string; kind: "eligibility"; payload: EligibilityPayload }
   | { card_id: string; kind: "research_summary"; payload: ResearchSummaryPayload }
   | { card_id: string; kind: "document_checklist"; payload: DocumentChecklistPayload }
-  | { card_id: string; kind: "field_review"; payload: FieldReviewPayload };
+  | { card_id: string; kind: "field_review"; payload: FieldReviewPayload }
+  | { card_id: string; kind: "contradiction"; payload: FlagPayload }
+  | { card_id: string; kind: "missing_item"; payload: FlagPayload }
+  | { card_id: string; kind: "low_confidence"; payload: FlagPayload }
+  | { card_id: string; kind: "readiness"; payload: ReadinessPayload };
 
 // ---------- server -> client ----------
 export type ServerMsg =

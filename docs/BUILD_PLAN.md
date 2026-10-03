@@ -10,7 +10,7 @@ Tick the box when its acceptance criteria are verified.
 - [x] M3 Text agent (WS, phases, onboarding + choose_form)
 - [x] M4 Voice (VAD, STT/TTS router, avatar states, barge-in)
 - [x] M5 Research + eligibility (packs, live research, cards) — packs are drafts until the team verifies them
-- [ ] M6 Documents + verification (OCR, extraction, contradictions, rules)
+- [x] M6 Documents + verification (OCR, extraction, contradictions, rules) — Realtime trimmed (poll + server push)
 - [ ] M7 Guided form filling (screen share, PiP, guidance)
 - [ ] M8 Audit, consent, profile page, polish
 - [ ] M9 Demo hardening

@@ -1,0 +1,78 @@
+{
+  "ruleset": "core",
+  "version": "2026.1",
+  "rules": [
+    {
+      "id": "NAME_MISMATCH_ACROSS_DOCS",
+      "severity": "block",
+      "reason_code": "name_mismatch",
+      "field_key": "full_name",
+      "logic": { "<": [{ "var": "computed.name_match_min" }, 80] },
+      "message": {
+        "en": "Your name doesn't match across your documents. Portals often return applications for this. Pick the spelling to use.",
+        "mr": "तुमचे नाव सर्व कागदपत्रांवर जुळत नाही. यामुळे अर्ज परत येऊ शकतो. कोणते स्पेलिंग वापरायचे ते निवडा.",
+        "hi": "आपका नाम सभी दस्तावेज़ों में मेल नहीं खाता। इससे आवेदन लौटाया जा सकता है। कौन-सी स्पेलिंग इस्तेमाल करनी है, चुनें।"
+      }
+    },
+    {
+      "id": "NAME_MINOR_VARIATION",
+      "severity": "warn",
+      "reason_code": "name_spelling_variation",
+      "field_key": "full_name",
+      "logic": { "and": [{ ">=": [{ "var": "computed.name_match_min" }, 80] }, { "<": [{ "var": "computed.name_match_min" }, 92] }] },
+      "message": {
+        "en": "Your name is spelled slightly differently on some documents. Portals may reject spelling differences. Pick the spelling to use.",
+        "mr": "काही कागदपत्रांवर नावाचे स्पेलिंग थोडे वेगळे आहे. पोर्टल असा फरक नाकारू शकते. कोणते स्पेलिंग वापरायचे ते निवडा.",
+        "hi": "कुछ दस्तावेज़ों पर नाम की स्पेलिंग थोड़ी अलग है। पोर्टल ऐसा फ़र्क नामंज़ूर कर सकता है। कौन-सी स्पेलिंग इस्तेमाल करनी है, चुनें।"
+      }
+    },
+    {
+      "id": "BANK_HOLDER_NAME_MISMATCH",
+      "severity": "block",
+      "reason_code": "bank_holder_mismatch",
+      "field_key": "account_holder_name",
+      "logic": { "<": [{ "var": "computed.bank_holder_match" }, 80] },
+      "message": {
+        "en": "The account holder name on the passbook doesn't match your name. The scholarship is paid only into your own account.",
+        "mr": "पासबुकवरील खातेदाराचे नाव तुमच्या नावाशी जुळत नाही. शिष्यवृत्ती फक्त तुमच्या स्वतःच्या खात्यात जमा होते.",
+        "hi": "पासबुक पर खाताधारक का नाम आपके नाम से मेल नहीं खाता। छात्रवृत्ति सिर्फ़ आपके अपने खाते में आती है।"
+      }
+    },
+    {
+      "id": "BANK_HOLDER_NAME_VARIATION",
+      "severity": "warn",
+      "reason_code": "bank_holder_spelling_variation",
+      "field_key": "account_holder_name",
+      "logic": { "and": [{ ">=": [{ "var": "computed.bank_holder_match" }, 80] }, { "<": [{ "var": "computed.bank_holder_match" }, 92] }] },
+      "message": {
+        "en": "Your passbook spells your name slightly differently. Payments can fail on a name mismatch; ask your bank to correct it, or note why it is fine.",
+        "mr": "पासबुकवर तुमच्या नावाचे स्पेलिंग थोडे वेगळे आहे. नाव न जुळल्यास पैसे अडकू शकतात; बँकेत दुरुस्ती करा, किंवा ते का चालेल ते लिहा.",
+        "hi": "पासबुक पर आपके नाम की स्पेलिंग थोड़ी अलग है। नाम मेल न खाने पर भुगतान अटक सकता है; बैंक से सुधार करवाएँ, या लिखें कि यह क्यों ठीक है।"
+      }
+    },
+    {
+      "id": "INCOME_CERT_OLDER_THAN_1Y",
+      "severity": "warn",
+      "reason_code": "income_cert_old",
+      "field_key": "income_cert_issue_date",
+      "logic": { ">": [{ "var": "computed.income_cert_age_days" }, 365] },
+      "message": {
+        "en": "Your income certificate is more than a year old. Most schemes want the latest financial year's certificate.",
+        "mr": "तुमचा उत्पन्न दाखला एक वर्षापेक्षा जुना आहे. बहुतेक योजनांना चालू आर्थिक वर्षाचा दाखला लागतो.",
+        "hi": "आपका आय प्रमाणपत्र एक साल से ज़्यादा पुराना है। ज़्यादातर योजनाएँ ताज़ा वित्तीय वर्ष का प्रमाणपत्र माँगती हैं।"
+      }
+    },
+    {
+      "id": "HSC_NOT_AFTER_SSC",
+      "severity": "block",
+      "reason_code": "hsc_before_ssc",
+      "field_key": "hsc_year",
+      "logic": { "<=": [{ "var": "fields.hsc_year" }, { "var": "fields.ssc_year" }] },
+      "message": {
+        "en": "Your 12th exam year is not after your 10th exam year. One of them is probably wrong.",
+        "mr": "तुमचे १२वीचे वर्ष १०वीच्या वर्षानंतरचे नाही. यापैकी एक चुकीचे असावे.",
+        "hi": "आपका 12वीं का साल 10वीं के साल के बाद का नहीं है। इनमें से एक शायद ग़लत है।"
+      }
+    }
+  ]
+}

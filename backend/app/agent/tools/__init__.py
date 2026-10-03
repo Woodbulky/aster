@@ -23,6 +23,8 @@ class Ctx:
     session: dict[str, Any]  # form_sessions row, kept current by tools and the orchestrator
     lang: str
     message_id: str | None = None  # latest user message: the evidence for proposals
+    input_mode: str = "text"  # how that message came in (voice | text): resolve_flag's "via"
+    user_text: str = ""  # that message's words: a flag answer's reason must come from them
 
 
 class Card(BaseModel):
@@ -108,6 +110,7 @@ def run_tool(ctx: Ctx, name: str, raw_args: str | dict[str, Any]) -> ToolResult:
 from app.agent.tools import (  # noqa: E402, F401  (registers)
     documents,
     eligibility,
+    flags,
     forms,
     profile,
     research,

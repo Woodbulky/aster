@@ -198,8 +198,10 @@ def update_document(db: Client, user_id: str, document_id: str, values: Row) -> 
     db.table("documents").update(values).eq("id", document_id).eq("user_id", user_id).execute()
 
 
-def list_documents(db: Client, user_id: str, session_id: str) -> list[Row]:
-    q = db.table("documents").select("id,doc_type,status,error,created_at,page_count")
+def list_documents(db: Client, user_id: str, session_id: str, full: bool = False) -> list[Row]:
+    """Oldest first. full=True adds the OCR json (pages + lines)."""
+    cols = "id,doc_type,status,error,created_at,page_count" + (",ocr" if full else "")
+    q = db.table("documents").select(cols)
     return q.eq("session_id", session_id).eq("user_id", user_id).order("created_at").execute().data
 
 
@@ -226,6 +228,31 @@ def list_field_values(db: Client, user_id: str, session_id: str) -> list[Row]:
 def add_flag(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
     row = {**values, "user_id": user_id, "session_id": session_id}
     return _one(db.table("flags").insert(row).execute().data)
+
+
+def get_flag(db: Client, user_id: str, flag_id: str) -> Row | None:
+    q = db.table("flags").select("*").eq("id", flag_id).eq("user_id", user_id)
+    return _one(q.limit(1).execute().data)
+
+
+def list_profile_sources(db: Client, user_id: str) -> list[Row]:
+    return db.table("profile_field_sources").select("*").eq("user_id", user_id).execute().data
+
+
+def shown_flag_ids(db: Client, user_id: str, session_id: str) -> set[str]:
+    """Flags whose card was already sent (ask_resolution tool rows)."""
+    q = db.table("messages").select("tool_payload").eq("session_id", session_id)
+    rows = q.eq("user_id", user_id).eq("tool_name", "ask_resolution").execute().data
+    out = set()
+    for r in rows:
+        args = (r.get("tool_payload") or {}).get("args") or "{}"
+        try:
+            out.add(
+                json.loads(args).get("flag_id") if isinstance(args, str) else args.get("flag_id")
+            )
+        except (ValueError, AttributeError):
+            continue
+    return out
 
 
 def update_flag(db: Client, user_id: str, flag_id: str, values: Row) -> None:

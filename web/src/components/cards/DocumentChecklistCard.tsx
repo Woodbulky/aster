@@ -3,6 +3,7 @@
 import { CheckCircle2, ExternalLink, FileUp, LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { BLUR_MIN, blurScore } from "@/lib/blur";
 import { ACCEPT } from "@/lib/general-docs";
 import { sessionDocStatus, uploadSessionDoc, waitForDocument } from "@/lib/documents";
 import { cn } from "@/lib/utils";
@@ -27,11 +28,13 @@ function host(url: string) {
   }
 }
 
-/** Upload slots for the scheme's documents. When a document has been read, onProcessed tells the
- * conversation, which shows the field review card. */
-export function DocumentChecklistCard({ payload, onProcessed }: { payload: DocumentChecklistPayload; onProcessed: (documentId: string) => void }) {
+/** Upload slots for the scheme's documents. The chips follow the document row; when it has been
+ * read, the server itself tells the conversation (field review card + summary). */
+export function DocumentChecklistCard({ payload }: { payload: DocumentChecklistPayload }) {
   const [status, setStatus] = useState<Record<string, Local>>(() => Object.fromEntries(payload.items.map((i) => [i.doc_type, i.status])));
   const [error, setError] = useState<Record<string, string>>({});
+  // A photo that looks blurry waits here until the user picks "use anyway" or another photo.
+  const [blurry, setBlurry] = useState<{ type: string; file: File; score: number } | null>(null);
 
   useEffect(() => {
     // The card is a snapshot from when it was shown: refresh from the database.
@@ -40,16 +43,21 @@ export function DocumentChecklistCard({ payload, onProcessed }: { payload: Docum
       .catch(() => {});
   }, [payload.session_id]);
 
-  async function pick(item: ChecklistItem, file: File | undefined) {
+  async function pick(item: ChecklistItem, file: File | undefined, checked = false) {
     if (!file) return;
+    setBlurry(null);
+    const score = await blurScore(file);
+    if (!checked && score !== null && score < BLUR_MIN) {
+      setBlurry({ type: item.doc_type, file, score });
+      return;
+    }
     const set = (s: Local) => setStatus((x) => ({ ...x, [item.doc_type]: s }));
     setError((e) => ({ ...e, [item.doc_type]: "" }));
     set("uploading");
     try {
-      const id = await uploadSessionDoc(payload.session_id, item.doc_type, file);
-      const done = await waitForDocument(id, set);
-      set(done);
-      onProcessed(id);
+      const quality = score === null ? undefined : { blur_var: score };
+      const id = await uploadSessionDoc(payload.session_id, item.doc_type, file, quality);
+      set(await waitForDocument(id, set));
     } catch (e) {
       set("missing");
       setError((x) => ({ ...x, [item.doc_type]: (e as Error).message }));
@@ -78,6 +86,14 @@ export function DocumentChecklistCard({ payload, onProcessed }: { payload: Docum
                   </a>
                 ) : (
                   item.note && <p className="text-xs text-muted-foreground">{item.note}</p>
+                )}
+                {blurry?.type === item.doc_type && (
+                  <div role="alert" className="mt-2 rounded-xl bg-butter px-3 py-2 text-sm">
+                    This photo looks blurry, so Aster may misread it. Take a clearer photo in good light, or use it anyway.
+                    <button type="button" onClick={() => void pick(item, blurry.file, true)} className="ml-2 font-medium text-primary underline-offset-2 hover:underline">
+                      Use anyway
+                    </button>
+                  </div>
                 )}
                 {error[item.doc_type] && (
                   <p role="alert" className="mt-1 text-xs text-destructive">

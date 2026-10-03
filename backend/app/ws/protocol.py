@@ -34,6 +34,7 @@ class UiEvent(_In):
         "form_selected",
         "documents_requested",
         "document_processed",
+        "flag_resolved",
     ]
     payload: dict[str, Any] = {}
 
@@ -70,6 +71,12 @@ class DocumentProcessed(_In):
     """ui_event document_processed payload: the client saw the document finish (status poll)."""
 
     document_id: uuid.UUID
+
+
+class FlagResolved(_In):
+    """ui_event flag_resolved payload: the user answered a flag card (REST resolve/acknowledge)."""
+
+    flag_id: uuid.UUID
 
 
 class FormSelected(_In):

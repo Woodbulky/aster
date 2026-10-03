@@ -12,10 +12,10 @@
 | `onboarding` | profile core fields incomplete | `choose_form` when core fields confirmed | `get_profile`, `propose_profile_update`, `explain_why_asked` |
 | `choose_form` | onboarding done | `research` once a scheme is set (`scheme_key` or `scheme_name`) | `get_profile`, `list_supported_forms`, `suggest_schemes`, `set_form` |
 | `research` | scheme set | `eligibility` when `research_results` exist for the current scheme | `get_knowledge_pack`, `search_web`, `fetch_url`, `read_pdf`, `save_research`, `suggest_schemes`, `set_form` |
-| `eligibility` | research saved | `documents` when the user wants to continue (M6); back to `research` if the user switches scheme | `check_eligibility`, `get_profile`, `propose_profile_update`, `fetch_url`, `suggest_schemes`, `set_form` |
-| `documents` | user continues | `verification` when all required docs are uploaded or the user says continue | `request_documents`, `get_document_status`, `explain_why_asked` |
-| `verification` | docs present | `ready` when no open blocking flags (or the user acknowledges) | `run_verification`, `list_flags`, `ask_resolution`, `get_field`, `explain_why_asked` |
-| `ready` | — | `form_fill` on user yes | `readiness_summary`, `start_form_fill` |
+| `eligibility` | research saved | `documents` via `request_documents` (tool or the card's Continue button); back to `research` if the user switches scheme | `check_eligibility`, `get_profile`, `propose_profile_update`, `fetch_url`, `request_documents`, `suggest_schemes`, `set_form` |
+| `documents` | user continues | `verification` via `run_verification` (the user says they are done) | `request_documents`, `get_document_status`, `run_verification`, `list_flags`, `ask_resolution`, `resolve_flag`, `explain_why_asked` |
+| `verification` | checks run | `ready` when no open blocking flag (resolved or acknowledged), in code | `run_verification`, `list_flags`, `ask_resolution`, `resolve_flag`, `readiness_summary`, `get_document_status`, `request_documents`, `explain_why_asked` |
+| `ready` | — | back to `verification` if a blocking flag opens; `form_fill` (M7) | `readiness_summary`, `list_flags`, `ask_resolution`, `resolve_flag`, `get_document_status`, `run_verification` (+ `start_form_fill` in M7) |
 | `form_fill` | screen share active | `done` | `analyze_screen`, `get_field`, `list_fields`, `pause_guidance` |
 | `done` | user ends | — | `session_summary` |
 
@@ -31,20 +31,20 @@ A `card` is a UI payload sent to the client (see `docs/API.md`). Cards are how t
 | `explain_why_asked` | `field_key` | Template explanation in the user's language + source (pack/GR) |
 | `list_supported_forms` | — | Portals with packs available |
 | `suggest_schemes` | `portal?` | Evaluates every pack against the profile → top 6 with met/not met/unknown counts. Card `scheme_suggestions` |
-| `set_form` | `scheme_key` \| `scheme_name` (exactly one) | Updates `form_sessions`. With a pack: `portal`, `scheme_name`, and `portal_url` from `_portal.json` (never from the LLM, guardrail 8). Any other scholarship: `scheme_name` only, no URL |
+| `set_form` | `scheme_key` \| `scheme_name` (exactly one; a typed name that clearly matches exactly one pack uses that pack) | Updates `form_sessions`. With a pack: `portal`, `scheme_name`, and `portal_url` from `_portal.json` (never from the LLM, guardrail 8). Any other scholarship: `scheme_name` only, no URL |
 | `get_knowledge_pack` | — | The session's pack (compact). Saves `research_results` origin=pack, which moves the phase on |
 | `search_web` | `query`, `prefer_domains?: string[]` | Top results (title, url, snippet). Official domains ranked first |
 | `fetch_url` | `url`, `focus?` | Whole-page text (≤ 100k chars stored in `fetched_content`; ~2k most relevant chars returned) + `content_id`. http(s) to public IPs only |
 | `read_pdf` | `url`, `focus?` | Same as `fetch_url`; pymupdf, scanned pages → GPU `/ocr` (≤ 15 pages). `document_id` comes with M6 |
 | `save_research` | `items: [{kind: eligibility\|documents, text, source_url, quote, content_id}]` (one call) | **Validator:** the `content_id` must be this session's, `source_url` must be that page, the quote ≥ 15 chars and found (normalised) in its stored text, else the item is rejected. Saves `research_results` origin=live per kind. Card `research_summary` |
 | `check_eligibility` | — | Pack: deterministic evaluation of `criteria[].logic` against the profile → per-criterion `met\|not_met\|unknown` + reason ("… — per <site>") + source + `ask_field`. Live scheme: every saved rule `unknown`/unverified. Card `eligibility` |
-| `request_documents` | `doc_types[]` | Card `document_checklist` (from the pack's `documents`, conditional on the profile) |
-| `get_document_status` | — | Uploaded docs, OCR/extraction status |
-| `run_verification` | — | Runs the pipeline in `docs/VERIFICATION.md` → flags |
-| `list_flags` | `status?` | Open/resolved flags |
+| `request_documents` | — | Card `document_checklist`: the pack's documents (`other` types listed as "also keep ready") + Aadhaar, 10th marksheet, passbook as recommended. Moves eligibility → documents |
+| `get_document_status` | `document_id?` | All docs with status ("read" / "still reading" / "could not be read"); with an id, card `field_review` and `values_found` / `not_found_on_document` |
+| `run_verification` | — | Cross-source checks incl. missing required documents → flags; documents → verification; the new flag cards are shown in code |
+| `list_flags` | `status?` | Flag summaries (no candidate ids). The open flags are also in the system prompt state with "Form ready: NO/yes" |
 | `ask_resolution` | `flag_id` | Card `contradiction` / `missing_item` / `low_confidence` |
-| `get_field` / `list_fields` | `field_key?` | Confirmed values + source refs (identifiers masked) |
-| `readiness_summary` | — | Counts of confirmed fields, open flags, missing docs. Card `readiness` |
+| `resolve_flag` | `flag_id, choice?, new_value?, reason` | The user's answer by voice/text (see VERIFICATION.md "Resolution"); usually called in code from `agent/answers.py`. Returns the updated card |
+| `readiness_summary` | — | Card `readiness`: values + sources, blocking/warning/kept flags |
 | `start_form_fill` | — | Card `start_screen_share` (client prompts the user to share) |
 | `analyze_screen` | `frame_id` | Guidance JSON (see `docs/FORM_FILL.md`) |
 | `pause_guidance` | `reason` | Tells the client to pause frame sending |

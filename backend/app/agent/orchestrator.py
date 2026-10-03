@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.agent import phases
+from app.agent.answers import read_answers
 from app.agent.prompts import read, t
 from app.agent.tools import TOOLS, Ctx, ToolResult, run_tool, schemas
 from app.agent.tools.profile import masked
@@ -20,6 +21,7 @@ from app.config import Settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable, chat_stream
 from app.speech.stream import Speaker
+from app.verify.checks import flag_summary
 from app.ws.protocol import (
     AgentState,
     AssistantDelta,
@@ -135,7 +137,11 @@ async def sync_phase(ctx: Ctx, send: Send) -> bool:
         and ctx.session["phase"] in ("research", "eligibility")
         and await _db(repo.latest_research, ctx.db, ctx.user_id, ctx.session["id"], scheme)
     )
-    new = phases.next_phase(ctx.session, profile, researched)
+    blocks = 0
+    if ctx.session["phase"] in ("verification", "ready"):
+        flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
+        blocks = sum(f["severity"] == "block" for f in flags)
+    new = phases.next_phase(ctx.session, profile, researched, blocks)
     old = ctx.session["phase"]
     if new == old:
         return False
@@ -150,6 +156,8 @@ async def sync_phase(ctx: Ctx, send: Send) -> bool:
         {"from": old, "to": new},
     )
     await send(PhaseMsg(phase=new))
+    if new == "ready":  # the readiness card comes from code, not from the model's judgement
+        await run_tool_ui(ctx, send, "readiness_summary", {})
     return True
 
 
@@ -175,6 +183,18 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
         state.append(f"Suggested next question: {t(ctx.lang, f'ask.{missing[0]}')}")
     if pending:
         state.append(f"Card waiting for the user to confirm: {json.dumps(pending['updates'])}")
+    if phase in ("documents", "verification", "ready"):
+        # The model invented problems that were never flagged (seen live: a "father's name"
+        # mismatch, then the same reply on a loop). It only gets the real list.
+        flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
+        open_ = json.dumps([flag_summary(f) for f in flags], ensure_ascii=False)
+        state.append(f"Open flags (the only problems; their cards are on screen): {open_}")
+        # Seen live: "You're good to go!" with a blocking flag still open.
+        blocks = sum(f["severity"] == "block" for f in flags)
+        state.append(
+            f"Form ready: {'NO' if blocks else 'yes'} ({blocks} blocking flag(s) open). Never say "
+            "the documents or the form are ready while this says NO."
+        )
     base = (
         read("system")
         .replace("{assistant_name}", assistant_name)
@@ -286,6 +306,58 @@ async def run_tool_ui(
     return res
 
 
+async def show_new_flag_cards(ctx: Ctx, send: Send) -> list[dict[str, Any]]:
+    """A card for every open flag whose card was not shown yet, in code: the model was seen
+    talking about flags without ever showing their cards. -> their summaries."""
+    shown = await _db(repo.shown_flag_ids, ctx.db, ctx.user_id, ctx.session["id"])
+    flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
+    out = []
+    for f in flags:
+        if f["id"] not in shown:
+            res = await run_tool_ui(ctx, send, "ask_resolution", {"flag_id": f["id"]})
+            if res.ok:
+                out.append(res.data)
+    return out
+
+
+FLAG_PHASES = ("documents", "verification", "ready")
+
+
+async def _apply_answers(s: Settings, ctx: Ctx, send: Send, user_text: str) -> bool:
+    """Save the flags the user just answered in words (answers.py). The model's reply then only
+    confirms; it is told what was saved. -> True if anything was saved."""
+    flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
+    if not flags:
+        return False
+    recent = await _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], 4)
+    asked = next((r["content"] for r in reversed(recent) if r["role"] == "assistant"), "") or ""
+    answers = await read_answers(s, flags, user_text, asked, ctx.user_id, ctx.session["id"])
+    saved = []
+    for a in answers:
+        if not a.reason or not (a.choice or a.new_value or a.keep_as_is):
+            continue  # no reason given: the reply asks why
+        args = {"flag_id": a.flag_id, "reason": a.reason}
+        if not a.keep_as_is:  # "keep it as is" = acknowledge, not a pick
+            args |= {"choice": a.choice} if a.choice else {}
+            args |= {"new_value": a.new_value} if a.new_value and not a.choice else {}
+        res = await run_tool_ui(ctx, send, "resolve_flag", args)
+        if res.ok:
+            saved.append(res.data)
+    if saved:
+        note = (
+            f"Saved from the user's {ctx.input_mode} answer: "
+            f"{json.dumps(saved, ensure_ascii=False)}. Confirm it in a few words, then go on."
+        )
+        await _db(
+            repo.add_message,
+            ctx.db,
+            ctx.user_id,
+            ctx.session["id"],
+            {"role": "system", "content": note, "lang": ctx.lang, "input_mode": "ui"},
+        )
+    return bool(saved)
+
+
 def _tool_content(res: ToolResult) -> str:
     body = res.model_dump(exclude={"card"}, exclude_none=True)
     if res.card:
@@ -324,7 +396,11 @@ async def run_turn(
             },
         )
         ctx.message_id = row["id"] if row else None
+        ctx.input_mode = input_mode
+        ctx.user_text = user_text
     if ui_event is not None:
+        if user_text is None:
+            ctx.input_mode = "ui"  # a tap is not the user's words: resolve_flag refuses it
         await _db(
             repo.add_message,
             ctx.db,
@@ -335,6 +411,9 @@ async def run_turn(
 
     await send(AgentState(state="thinking"))
     changed = await sync_phase(ctx, send)
+    if user_text is not None and ctx.session["phase"] in FLAG_PHASES:
+        if await _apply_answers(s, ctx, send, user_text):
+            changed = await sync_phase(ctx, send) or changed
     rows = await _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], HISTORY)
     msgs: list[dict[str, Any]] = [
         {"role": "system", "content": await _system_prompt(ctx, assistant_name)},
@@ -460,6 +539,8 @@ async def run_turn(
                 msgs.append(
                     {"role": "tool", "tool_call_id": c["id"], "content": _tool_content(res)}
                 )
+                if c["name"] == "run_verification" and res.ok:
+                    card_sent = bool(await show_new_flag_cards(ctx, send)) or card_sent
             if await sync_phase(ctx, send):
                 changed = True
                 msgs[0] = {"role": "system", "content": await _system_prompt(ctx, assistant_name)}

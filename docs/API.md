@@ -13,8 +13,8 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 | POST | `/api/sessions` | `{portal?, scheme_key?, portal_url?}` → session |
 | GET | `/api/sessions/{id}` | phase, fields, flags, docs, research |
 | POST | `/api/sessions/{id}/documents` | `{document_id, doc_type, mime, quality?}` after the client uploads to Storage `<uid>/<sid>/<document_id>.<ext>` → 202, pipeline runs in the background (`documents.status`: uploaded → processing → extracted\|failed, `error`: ocr_unavailable\|llm_unavailable\|internal). 400 if the object is missing; posting a `failed` document again retries it, otherwise 409. No classifier: every upload slot is typed. There is no `/view` endpoint: the client reads `documents.ocr` (pages + lines with bbox) through RLS and signs `ocr.pages[].path` itself |
-| POST | `/api/sessions/{id}/flags/{flag_id}/resolve` | `{candidate_id? , value?, reason, via: tap\|voice}` |
-| POST | `/api/sessions/{id}/flags/{flag_id}/acknowledge` | `{reason}` |
+| POST | `/api/sessions/{id}/flags/{flag_id}/resolve` | `{candidate_id?, value?, reason (3–300)}` → `{flag_id, status}`. A candidate of this flag or a typed value (not both) → `resolved` + a confirmed `field_values` row; neither → `acknowledged`. Always `via=tap` (voice answers go through `resolve_flag` with their message id). 400 bad answer, 409 already answered |
+| POST | `/api/sessions/{id}/flags/{flag_id}/acknowledge` | `{reason}` → keep as is (also for blocking flags: the reason is logged) |
 | POST | `/api/consents` | `{scope, granted}` |
 | GET | `/api/sessions/{id}/audit` | audit events (own session only) |
 | DELETE | `/api/me` | delete the user's data (documents, sessions, profile) |
@@ -27,7 +27,7 @@ Client → server (JSON unless noted):
 | `user_text` | `text` |
 | `audio_start` | `mime, lang_hint?` → then ONE binary frame (audio, ≤ 2 MB) → `audio_end`. Errors: `bad_audio`, `no_speech`, `stt_unavailable` |
 | `interrupt` | — cancels the running turn (LLM + TTS); server answers `agent_state idle` |
-| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {scheme_key, portal?}`; M6: `documents_requested` (eligibility card button → checklist card in code), `document_processed {document_id}` (client saw the document finish → field_review card in code, then a spoken summary); later: `flag_resolved`, `document_uploaded`, `screen_share_started/stopped`), `payload`. `form_selected` runs `set_form` → `get_knowledge_pack` → `check_eligibility` in code, not via the LLM; the LLM then only speaks the summary |
+| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {scheme_key, portal?}`; M6: `documents_requested` (eligibility card button → checklist card in code), `flag_resolved {flag_id}` (after a tap answer → thanks + next flag), `document_processed {document_id}` (still accepted, but the server now pushes it itself when the pipeline ends, so the client does not send it); later: `screen_share_started/stopped`), `payload`. `form_selected` runs `set_form` → `get_knowledge_pack` → `check_eligibility` in code, not via the LLM; the LLM then only speaks the summary |
 | `screen_frame` | `frame_id, reason` → then ONE binary frame (JPEG) |
 | `ping` | — |
 
@@ -60,4 +60,6 @@ Cards (`card.kind` → `payload`):
 | `eligibility` | `{scheme_key\|null, name, origin: pack\|live, draft, results: [{id, text, status: met\|not_met\|unknown, reason, source: {url, quote}, ask_field}], counts, deadlines: [{label, date, passed, source}], note}`. Shown again after a reload (from its tool row) |
 | `document_checklist` | `{session_id, scheme, items: [{doc_type, label, required, source\|null, note, status: missing\|uploaded\|processing\|extracted\|failed, document_id}], others: [text], note}`. `source: null` = recommended by Aster (Aadhaar, 10th marksheet, passbook), not in the official list |
 | `field_review` | `{document_id, doc_type, label, status, error, engine: pdf_text\|gpu_ocr\|vision_llm, pages: [{path, width, height}], fields: [{id, field_key, label, value, confidence, low_confidence, source: {document_id, doc_type, line_ids, page, bbox: [[x0,y0,x1,y1]\|null]}}], unreadable: [label]}`. bbox null = read by the vision fallback (no highlight) |
+| `contradiction` / `missing_item` / `low_confidence` | one `FlagPayload`: `{flag_id, session_id, type: contradiction\|rule\|missing_doc\|low_confidence, severity, field_key, field_label, message (user's language), candidates: [{id, field_key, value, source_type, label, document_id, page, bbox, confidence}], can_pick, can_type, doc: {doc_type, label, source}\|null, status}`. The client re-reads the flag's status (RLS) and shows only the latest card per flag (a voice answer sends an updated card) |
+| `readiness` | `{session_id, ready, open_block: [summary], open_warn: [summary], acknowledged: [summary + reason], documents: [label], fields: [{field_key, label, value, source, confirmed}], note}`. Shown by code when the phase becomes `ready` |
 | `research_summary` | `{scheme, eligibility: [item], documents: [item], rejected, note}`, item = `{text, source_url, quote, content_id, site, fetched_on}` (all unverified) |

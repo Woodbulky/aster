@@ -8,7 +8,8 @@ from app.agent.phases import scheme_of
 from app.agent.tools import Card, Ctx, ToolResult, register
 from app.db import supabase as repo
 from app.research.packs import usable_packs
-from app.verify.pipeline import DOC_LABELS, review_payload
+from app.verify.extraction import DOC_LABELS
+from app.verify.pipeline import review_payload
 
 # Not in the packs' document lists, but most portals ask for them and Aster checks names and bank
 # details against them.
@@ -122,7 +123,8 @@ def get_document_status(ctx: Ctx, args: StatusArgs) -> ToolResult:
             "not_found_on_document": payload["unreadable"],
         }
         if doc["status"] == "failed":
-            data["why"] = FAILED_WHY.get(doc.get("error") or "", FAILED_WHY["internal"])
+            code = (doc.get("error") or "internal").split(":")[0]
+            data["why"] = FAILED_WHY.get(code, FAILED_WHY["internal"])
         card = Card(kind="field_review", payload=payload) if doc["status"] == "extracted" else None
         return ToolResult(ok=True, data=data, card=card)
     docs = repo.list_documents(ctx.db, ctx.user_id, ctx.session["id"])

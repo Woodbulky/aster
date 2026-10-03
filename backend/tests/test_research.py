@@ -226,7 +226,8 @@ def test_pack_validation(change: dict, error: str) -> None:
 
 
 def test_drafts_only_in_dev() -> None:
-    assert set(packs.usable_packs(Settings())) == {"demo.obc_aid", "demo.open_merit"}
+    # _env_file=None: a developer's .env with PACKS_INCLUDE_DRAFT=true must not change the test
+    assert set(packs.usable_packs(Settings(_env_file=None))) == {"demo.obc_aid", "demo.open_merit"}
     assert "demo.draft_one" in packs.usable_packs(Settings(packs_include_draft=True))
     assert "demo.draft_one" not in packs.usable_packs(
         Settings(packs_include_draft=True, app_env="prod")

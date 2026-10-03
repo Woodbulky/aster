@@ -101,6 +101,11 @@ def main() -> None:
         doc.save(OUT / f"{doc_type}.pdf")
         doc[0].get_pixmap(dpi=150).save(OUT / f"{doc_type}.png")
         print(OUT / f"{doc_type}.pdf")
+    # For the blur check (web/src/lib/blur.ts): rendered small, then scaled back up.
+    small = make("income_certificate", *DOCS["income_certificate"])[0].get_pixmap(dpi=24)
+    big = pymupdf.Pixmap(small, small.width * 6, small.height * 6, None)
+    big.save(OUT / "income_certificate_blurry.png")
+    print(OUT / "income_certificate_blurry.png")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { ConfirmProfileCard } from "@/components/cards/ConfirmProfileCard";
 import { DocumentChecklistCard } from "@/components/cards/DocumentChecklistCard";
 import { FieldReviewCard } from "@/components/cards/FieldReviewCard";
+import { FlagCard } from "@/components/cards/FlagCard";
+import { ReadinessCard } from "@/components/cards/ReadinessCard";
 import { EligibilityCard } from "@/components/cards/EligibilityCard";
 import { ResearchSummaryCard } from "@/components/cards/ResearchSummaryCard";
 import { SchemeSuggestionsCard } from "@/components/cards/SchemeSuggestionsCard";
@@ -150,9 +152,11 @@ export default function ChatSessionPage() {
               </div>
             ) : (
               <ol role="log" aria-label="Conversation" aria-live="polite" className="flex flex-col gap-8">
-                {items.map((it) => {
+                {items.map((it, i) => {
                   if (it.kind === "card") {
                     const card = it.card;
+                    // A flag answered by voice comes back as a new card: show only its latest one.
+                    if ("flag_id" in card.payload && items.slice(i + 1).some((x) => x.kind === "card" && "flag_id" in x.card.payload && x.card.payload.flag_id === (card.payload as { flag_id: string }).flag_id)) return null;
                     return (
                     <li key={card.card_id} className="pl-12">
                       {card.kind === "confirm_profile" ? (
@@ -170,9 +174,13 @@ export default function ChatSessionPage() {
                       ) : card.kind === "eligibility" ? (
                         <EligibilityCard payload={card.payload} onContinue={phase === "eligibility" ? () => sendUi("documents_requested") : undefined} />
                       ) : card.kind === "document_checklist" ? (
-                        <DocumentChecklistCard payload={card.payload} onProcessed={(id) => sendUi("document_processed", { document_id: id })} />
+                        <DocumentChecklistCard payload={card.payload} />
                       ) : card.kind === "field_review" ? (
                         <FieldReviewCard payload={card.payload} />
+                      ) : card.kind === "contradiction" || card.kind === "missing_item" || card.kind === "low_confidence" ? (
+                        <FlagCard payload={card.payload} onAnswered={(id) => sendUi("flag_resolved", { flag_id: id })} />
+                      ) : card.kind === "readiness" ? (
+                        <ReadinessCard payload={card.payload} />
                       ) : (
                         <ResearchSummaryCard payload={card.payload} />
                       )}

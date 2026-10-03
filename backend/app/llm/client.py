@@ -82,6 +82,7 @@ class Breaker:
 breakers: dict[Provider, Breaker] = {"gpu": Breaker(), "fallback": Breaker()}
 _discovery: tuple[float, str | None] | None = None  # (fetched_at monotonic, url)
 _http: httpx.AsyncClient | None = None
+_http_loop: asyncio.AbstractEventLoop | None = None
 
 
 # ---------- GPU discovery ----------
@@ -166,9 +167,15 @@ class LLMUnavailable(RuntimeError):
 
 
 def _client() -> httpx.AsyncClient:
-    global _http
-    if _http is None:
+    # A client is tied to the event loop that made it: once that loop closes, make a new one
+    # (seen in the live test: "Event loop is closed" after a request's own loop ended).
+    global _http, _http_loop
+    if _http is None or (_http_loop is not None and _http_loop.is_closed()):
         _http = httpx.AsyncClient(timeout=STREAM_TIMEOUT)
+        try:
+            _http_loop = asyncio.get_running_loop()
+        except RuntimeError:  # built outside a loop (e.g. a sync chain builder): keep it
+            _http_loop = None
     return _http
 
 

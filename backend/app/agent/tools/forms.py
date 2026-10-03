@@ -4,6 +4,8 @@ profile; anything else is researched live (RESEARCH.md)."""
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 from app.agent.tools import Card, Ctx, ToolResult, register
 from app.agent.tools.eligibility import counts, evaluate_pack
@@ -11,6 +13,8 @@ from app.db import supabase as repo
 from app.research.packs import portals, usable_packs
 
 MAX_OPTIONS = 6
+PACK_NAME_MATCH = 90
+PACK_NAME_MARGIN = 10
 SUGGEST_NOTE = (
     "Ranked by how many official criteria your profile meets. Not a decision: the scheme "
     "authority decides. Another scholarship? Just tell me its name."
@@ -115,6 +119,23 @@ class SetFormArgs(BaseModel):
         return self
 
 
+def pack_for_name(name: str) -> str | None:
+    """The pack a typed scheme name clearly means ("Shahu Maharaj EBC" -> the EBC pack), or None
+    when no pack or more than one fits (e.g. "post matric scholarship": SC, ST and OBC packs).
+    Seen live: the typed name went to web research and saved a rule from another scheme's page."""
+
+    def fit(p: Any) -> float:
+        names = [n for n in (p.name.en, p.name.mr, p.name.hi) if n]
+        return max(fuzz.partial_token_set_ratio(name, n, processor=default_process) for n in names)
+
+    scores = sorted(((fit(p), k) for k, p in usable_packs().items()), reverse=True)
+    if not scores or scores[0][0] < PACK_NAME_MATCH:
+        return None
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < PACK_NAME_MARGIN:
+        return None
+    return scores[0][1]
+
+
 @register(
     "set_form",
     "Record the scholarship the user chose. scheme_key for a known scheme; otherwise "
@@ -123,6 +144,8 @@ class SetFormArgs(BaseModel):
     SetFormArgs,
 )
 def set_form(ctx: Ctx, args: SetFormArgs) -> ToolResult:
+    if args.scheme_name and (key := pack_for_name(args.scheme_name)):
+        args = SetFormArgs(scheme_key=key)
     if args.scheme_key:
         pack = usable_packs().get(args.scheme_key)
         if not pack:

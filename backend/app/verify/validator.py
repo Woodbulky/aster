@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from rapidfuzz import fuzz
 
+from app.verify import names
+
 Kind = Literal["text", "name", "date", "amount", "percent", "year", "ifsc", "last4", "fy", "enum"]
 KIND: dict[str, Kind] = {
     "full_name": "name",
@@ -31,6 +33,48 @@ KIND: dict[str, Kind] = {
     "gender": "enum",
     "category": "enum",
 }
+# Canonical enum values; contradictions.canon uses the same map.
+ENUMS = {
+    "male": "male",
+    "m": "male",
+    "पुरुष": "male",
+    "female": "female",
+    "f": "female",
+    "स्त्री": "female",
+    "महिला": "female",
+    "transgender": "transgender",
+    "तृतीयपंथी": "transgender",
+    "open": "open",
+    "general": "open",
+    "खुला": "open",
+    "obc": "obc",
+    "इतर मागास वर्ग": "obc",
+    "अन्य पिछड़ा वर्ग": "obc",
+    "sc": "sc",
+    "अनुसूचित जाती": "sc",
+    "अनुसूचित जाति": "sc",
+    "st": "st",
+    "अनुसूचित जमाती": "st",
+    "अनुसूचित जनजाति": "st",
+    "ews": "ews",
+    "sebc": "sebc",
+    "vj/nt": "vj/nt",
+    "vjnt": "vj/nt",
+    "nt": "vj/nt",
+    "sbc": "sbc",
+}
+ENUM_FIELDS = {"gender": {"male", "female", "transgender"}}
+# Headers OCR'd next to the name (seen live: the Aadhaar header "भारत सरकार" read as the name).
+NOT_A_NAME = (
+    "भारत सरकार",
+    "Government of India",
+    "Unique Identification Authority of India",
+    "भारतीय विशिष्ट पहचान प्राधिकरण",
+    "Government of Maharashtra",
+    "महाराष्ट्र शासन",
+    "Income Tax Department",
+)
+NOT_A_NAME_SCORE = 75
 FUZZY = 0.5  # type-check factor for a text value found only approximately (OCR noise)
 FUZZY_MIN = 90
 _DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
@@ -46,7 +90,7 @@ _DATE_IN_TEXT = re.compile(
 def norm(s: str) -> str:
     """NFKC, Devanagari digits -> ASCII, casefold, punctuation (except / - .) -> space, collapse."""
     s = unicodedata.normalize("NFKC", s).translate(_DEV_DIGITS).casefold()
-    s = re.sub(r"[^\w\s/.-]", " ", s)
+    s = re.sub(r"[^\w\s/.\-ऀ-ॿ]", " ", s)  # keep Devanagari vowel signs (not \w)
     return re.sub(r"\s+", " ", s).strip()
 
 
@@ -133,9 +177,20 @@ def check(
             if fuzz.partial_ratio(nv, nt) < FUZZY_MIN:
                 return Checked(False, reason="value not found in the cited lines")
             factor = FUZZY
-        if kind == "fy" and not re.fullmatch(r"\d{4}\s*-\s*\d{2,4}", value_text):
-            return Checked(False, reason="not a financial year")
         value = re.sub(r"\s+", " ", value_text)
+        if kind == "fy":
+            fy = re.fullmatch(r"(\d{4})\s*[-/–]\s*(\d{2,4})", value.translate(_DEV_DIGITS))
+            if not fy:
+                return Checked(False, reason="not a financial year")
+            value = f"{fy[1]}-{fy[2][-2:]}"
         if kind == "name":
             value = _HONORIFIC.sub("", value)
+            if re.search(r"\d", value) or any(
+                names.score(value, x) >= NOT_A_NAME_SCORE for x in NOT_A_NAME
+            ):
+                return Checked(False, reason="not a person's name")
+        if kind == "enum":
+            canon = ENUMS.get(norm(value))
+            if not canon or canon not in ENUM_FIELDS.get(field_key, set(ENUMS.values())):
+                return Checked(False, reason=f"not a valid {field_key}")
     return Checked(True, value=value, confidence=round(conf * factor, 3))

@@ -52,7 +52,33 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "request_documents",
         *PICK,
     ),
-    "documents": ("request_documents", "get_document_status", "explain_why_asked"),
+    "documents": (
+        "request_documents",
+        "get_document_status",
+        "run_verification",
+        "list_flags",
+        "ask_resolution",
+        "resolve_flag",
+        "explain_why_asked",
+    ),
+    "verification": (
+        "run_verification",
+        "list_flags",
+        "ask_resolution",
+        "resolve_flag",
+        "readiness_summary",
+        "get_document_status",
+        "request_documents",
+        "explain_why_asked",
+    ),
+    "ready": (
+        "readiness_summary",
+        "list_flags",
+        "ask_resolution",
+        "resolve_flag",
+        "get_document_status",
+        "run_verification",
+    ),
 }
 
 
@@ -67,14 +93,20 @@ def scheme_of(session: dict[str, Any]) -> str | None:
 
 
 def next_phase(
-    session: dict[str, Any], profile: dict[str, Any] | None, has_research: bool = False
+    session: dict[str, Any],
+    profile: dict[str, Any] | None,
+    has_research: bool = False,
+    open_blocks: int = 0,
 ) -> Phase:
     """Phase the session should be in now. has_research = research is saved for the current
-    scheme. research <-> eligibility follows it both ways (switching scheme = research again);
-    later phases own their own exits (M6+)."""
+    scheme. research <-> eligibility follows it both ways (switching scheme = research again).
+    eligibility -> documents -> verification are the user's call (request_documents,
+    run_verification). verification <-> ready follows the open blocking flags."""
     phase: Phase = session["phase"]
     if phase in ("research", "eligibility"):
         return "eligibility" if has_research else "research"
+    if phase in ("verification", "ready"):
+        return "verification" if open_blocks else "ready"
     if phase not in ("onboarding", "choose_form"):
         return phase
     if missing_core(profile):

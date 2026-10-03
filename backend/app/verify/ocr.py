@@ -3,7 +3,7 @@
 Chain: the PDF text layer (exact, no GPU) -> GPU /ocr (EasyOCR) -> the vision LLM transcribes
 lines (no bbox, confidence 0.7; never for Aadhaar or passbook images, whose full numbers must not
 leave our systems). Every line's text goes through redact_ids before it is stored or shown to an
-LLM (guardrail 6), and the pages of ID documents get the number drawn over."""
+LLM (guardrail 6), and any page with such a number gets it drawn over."""
 
 import base64
 import json
@@ -42,6 +42,7 @@ class Page:
     width: int
     height: int
     text_lines: list[tuple[str, list[float]]] = field(default_factory=list)  # PDF text layer
+    masked: bool = False  # an Aadhaar/bank-like number was drawn over
 
 
 def render(data: bytes, mime: str) -> list[Page]:
@@ -183,9 +184,12 @@ async def read_lines(
         else:
             raise OcrUnavailable(f"page {pi + 1}")
         engines.add(engine)
-        if doc_type in NO_VISION_FALLBACK:
-            raw = merge_digit_groups(raw)
-            page.png = _mask_ids(page, [(t, b) for t, _, b in raw])
+        # Every document type: an income certificate or a fee receipt can print a full Aadhaar or
+        # account number too (guardrail 6; found by /guardrails).
+        raw = merge_digit_groups(raw)
+        masked = _mask_ids(page, [(t, b) for t, _, b in raw])
+        page.masked = masked != page.png
+        page.png = masked
         for text, conf, bbox in raw:
             lines.append(
                 {

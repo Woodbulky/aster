@@ -137,3 +137,81 @@ def test_vision_fallback_lines_have_no_bbox(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert engine == "vision_llm"
     assert [(ln["bbox"], ln["confidence"]) for ln in lines] == [(None, 0.7), (None, 0.7)]
+
+
+def test_real_document_regressions() -> None:
+    """Seen on real scans: the last-4 line cited as gender, the Aadhaar header as the name."""
+    lines = [
+        {"id": "L0", "text": "भारत सरकार", "confidence": 0.4},
+        {"id": "L1", "text": "आारता सरकान", "confidence": 0.3},
+        {"id": "L2", "text": "[number ending 9310]", "confidence": 0.5},
+        {"id": "L3", "text": "पुरुष / MALE", "confidence": 0.9},
+        {"id": "L4", "text": "सन 2024/25 करिता", "confidence": 0.9},
+        {"id": "L5", "text": "Government of India", "confidence": 0.9},
+    ]
+    assert check("full_name", "भारत सरकार", ["L0"], lines).reason == "not a person's name"
+    assert check("full_name", "आारता सरकान", ["L1"], lines).reason == "not a person's name"
+    assert check("full_name", "Government of India", ["L5"], lines).reason == "not a person's name"
+    assert not check("gender", "9310", ["L2"], lines).ok
+    assert check("gender", "MALE", ["L3"], lines).ok
+    assert check("gender", "पुरुष", ["L3"], lines).ok
+    assert check("income_cert_fy", "2024/25", ["L4"], lines).value == "2024-25"
+
+
+def test_document_listeners_hear_both_outcomes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import Settings
+    from app.verify import pipeline
+
+    heard: list[str] = []
+    monkeypatch.setattr(pipeline.repo, "get_db", lambda: None)
+    monkeypatch.setattr(
+        pipeline.repo, "get_document", lambda db, u, d: {"id": d, "session_id": "s1"}
+    )
+    monkeypatch.setattr(pipeline.repo, "update_document", lambda *a: None)
+
+    async def boom(*a):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(pipeline, "_run", boom)
+    stop = pipeline.subscribe("s1", heard.append)
+    asyncio.run(pipeline.process_document(Settings(_env_file=None), "u1", "s1", "d1"))
+    stop()
+    asyncio.run(pipeline.process_document(Settings(_env_file=None), "u1", "s1", "d2"))
+    assert heard == ["d1"]  # failed documents are announced too; unsubscribed = silent
+
+
+def test_any_document_with_a_full_id_number_is_masked() -> None:
+    """Guardrail 6 (found by /guardrails): an income certificate can print a full Aadhaar too."""
+    from app.config import Settings
+
+    data = _pdf(["Income certificate for Aarav Sunil Patil", "Aadhaar No: 0000 1111 4417 issued"])
+    pages = ocr.render(data, "application/pdf")
+    before = pages[0].png
+    lines, _ = asyncio.run(
+        ocr.read_lines(Settings(_env_file=None), pages, "income_certificate", "u", "s")
+    )
+    assert lines[1]["text"] == "Aadhaar No: [number ending 4417] issued"
+    assert pages[0].masked and pages[0].png != before
+
+    clean = ocr.render(
+        _pdf(["Income certificate", "Annual income Rs. 1,48,000/-"]), "application/pdf"
+    )
+    asyncio.run(ocr.read_lines(Settings(_env_file=None), clean, "income_certificate", "u", "s"))
+    assert not clean[0].masked  # nothing to hide: the original upload is kept
+
+
+def test_retry_reads_the_masked_pages_when_the_original_is_gone() -> None:
+    from app.verify import pipeline
+
+    png = ocr.render(_pdf(["Name: Aarav"]), "application/pdf")[0].png
+
+    class Bucket:
+        def list(self, folder):
+            return [{"name": "p1.png"}, {"name": "notes.txt"}]
+
+        def download(self, path):
+            assert path == "u/s/d/p1.png"
+            return png
+
+    pages = pipeline._stored_pages(Bucket(), "u/s/d")
+    assert len(pages) == 1 and pages[0].png

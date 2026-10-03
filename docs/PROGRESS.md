@@ -351,3 +351,64 @@ Order agreed with the user: (a) specimens + pipeline + field_review on one PDF �
 - User approved a dedicated demo account (Aarav Sunil Patil, ₹1,20,000) for the (b)/(c) acceptance runs — create it next.
 - Replacing a document adds new candidates next to the old ones; (b) must ignore candidates of superseded documents.
 - Supabase `RemoteProtocolError` on idle connections (M5) now also hits the background pipeline; add one retry.
+
+## 2026-10-03 · M6 Documents + verification ✅ (parts 2–4: slices b, c, d)
+Part 1 (slice a, commit `2e9ed37`) is above. Realtime was trimmed (user allowed trimming slice d): the checklist chips poll the document row and the server pushes the cards; no migration.
+
+**What changed**
+- **Checks** (`verify/contradictions.py` pure, `verify/checks.py` DB):
+  - Profile values become candidates (latest only).
+  - Disagreements: numbers/dates/enums `block`, free text `warn`. Percentages ±0.05 (people round). Text in different scripts is not compared.
+  - Names go through the rules, not contradictions.
+  - Hard-to-read values (< 0.6) get a `low_confidence` card and stay out of comparisons.
+  - Replaced documents drop out.
+  - Flags are deduped by values (ids re-raised an answered flag, seen live). Missing-document flags only on `run_verification`; they close themselves (logged) when the document arrives.
+- **Rules:** `rules/core.json` (6, en/hi/mr): name mismatch/variation, bank holder mismatch/variation, income certificate > 1 year old, 12th not after 10th. Every evaluation is logged in `rule_evaluations`.
+- **Resolution:**
+  - Tap: REST resolve/acknowledge.
+  - Voice/text: `agent/answers.py` reads the user's words in code (JSON mode) → `resolve_flag`. The choice must be a candidate; the reason, and any typed value, must be in the user's own message; never from a card-tap turn. `via` + `message_id` come from the orchestrator.
+  - Seen live: the 8B model said "we'll use 148000" and saved nothing, hence the code path.
+- **Readiness:** `verification ↔ ready` follows the open blocking flags in code. The readiness card (every value with its source, blocking/warnings/kept) is shown by code. The model's state carries the open flags and "Form ready: NO/yes", after it said "You're good to go!" with a block open.
+- **Server push:** `pipeline.subscribe` tells the open conversation when a document is done (field review + new flag cards + a short summary). The browser's `document_processed` event never arrived in the user's run. The job is handed to the socket's loop (`call_soon_threadsafe`).
+- **Real-scan fixes** (user's own documents):
+  - Gender/category must be a real value ("9310" was read as gender).
+  - Issuer headers ("भारत सरकार", "Government of India") are not names.
+  - Income certificates don't extract `full_name` (often the parent's).
+  - "2024/25" is a financial year; 2-digit exam years are read as 20xx; spaced dates parse.
+  - `norm()` keeps Devanagari vowel signs (they were stripped, so "पुरुष" ≠ "Male").
+- **Robustness:**
+  - One retry on a dropped Supabase connection or a Storage 5xx; `documents.error` records the exception class.
+  - LLM/speech HTTP clients are rebuilt when their event loop closed.
+- **Other:**
+  - `set_form(scheme_name)` maps a typed name onto the one pack it clearly matches.
+  - The profile pop-up waits for `loadMe` (it overwrote the demo profile).
+  - The demo account `aarav.demo@example.com` comes from `scripts/seed_demo_user.py` (`--link` = one-time sign-in link, no email); the auth callback accepts `token_hash`.
+- **Web:**
+  - `FlagCard` (pick / type / reason / keep as is; answered cards turn neutral and show the chosen value; only the latest card per flag).
+  - `ReadinessCard`.
+  - Blur check (`lib/blur.ts`, `BLUR_MIN = 100`, calibrated on the specimen) with an inline "use anyway"; `demo/specimens/income_certificate_blurry.png` scores 21.
+- **Guardrails** (`/guardrails`, 2 FAILs fixed):
+  - Page images are masked and the original deleted for **any** document type that prints a full ID number; a retry reads the masked pages.
+  - A voice/text `new_value` must be in the user's words.
+- **Docs:** VERIFICATION, API, AGENT and FRONTEND updated.
+
+**How verified**
+- pytest **277 passed**: name matcher spec cases; validator incl. invented values; checks (demo flags exactly, dedupe, resolve/ack, replaced docs, missing docs, low confidence, rounding/scripts); voice resolution (own words, invented reason or value refused, card-tap turn refused); readiness; phases; masking for any doc type; retry from masked pages; listeners. Web: 4 node tests (blur), lint, typecheck, build. ruff clean.
+- **Acceptance, live** (real `/ws` + Sarvam STT + DB/storage/LLM; demo account, session `a793d5c5…`):
+  - The 5 specimens → exactly an income contradiction (block) and a passbook name variation (warn).
+  - 🎙 Marathi *"उत्पन्नाच्या दाखल्यावरचे एक लाख अठ्ठेचाळीस हजार बरोबर आहे, कारण तो नवीन दाखला आहे"* → **resolved** ₹1,48,000 via voice.
+  - 🎙 *"…बँकेची चूक आहे… ते तसेच ठेवा"* → **acknowledged** via voice.
+  - Then verification → **ready** → readiness card.
+  - SQL: both flags carry `via=voice` + the `message_id` of the spoken message; the confirmed value points at the certificate's candidate; 0 values without a source; audit raised → resolved/acknowledged → phase changes.
+  - The Kaggle GPU died mid-run and Groq took over.
+- Tap path live (session `533f46fe…`): resolve + acknowledge over REST, 409/422 guards, documents → verification → ready.
+- User click-through (session `27bb21fc…`, real documents): cards pushed, real flags only, "12th year is 2025 because …" typed → resolved → "Ready to fill the form".
+
+**Open issues**
+- A resolution doesn't update the profile (user-approved for now). The profile keeps ₹1,20,000 while the form uses ₹1,48,000; a proposal card can come in M8.
+- The vision fallback can still send a non-ID document image that prints a full Aadhaar to Groq when the GPU is down (audited, fail-closed). Aadhaar and passbook images never go.
+- Masking draws over a proportional guess of the digits' x-range; verify on real scans.
+- The 8B GPU model writes awkward Marathi summaries (e.g. "आय निर्धारित करणारे प्रमाणपत्र"); Groq's are better. A native speaker should review the flag messages.
+- `BLUR_MIN` is calibrated on a synthetic specimen; re-check on phone photos.
+- Two tabs on one session both get the pushed cards (in-process listeners, one backend instance).
+- Cleanup done (user request): the two demo-account sessions that held a team member's real documents (`86292a66…`, `27bb21fc…`) were deleted with their storage files (16 objects; messages, values, flags, rule logs and audit cascade), and mobile/caste/religion/local name cleared from the demo profile. SQL check: 0 rows, 0 objects left. Text already sent to the LLM providers (OCR lines, redacted) cannot be recalled. The dev account's own test session `491067fa…` still holds that member's documents (their own account).
