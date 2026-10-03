@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+<title>Review &amp; Final Submit — Demo Scholarship Portal</title>
+</head>
+<body>
+<div class="mock">MOCK PORTAL — for the Aster demo only. Not a government website. Do not enter real details.</div>
+<header><h1>Demo Scholarship Portal</h1><p>Student scholarship applications (mock)</p></header>
+<main>
+  <h2>Review &amp; Final Submit</h2>
+  <p class="hint">Check your details. After Final Submit you cannot edit the application.</p>
+  <table id="t"></table>
+  <p><label><input type="checkbox" id="decl"> I declare that the information given above is true.</label></p>
+  <div class="btns">
+    <button type="button" onclick="location.href = 'form.html'">Edit</button>
+    <button class="danger" type="button" onclick="document.getElementById('ok').style.display = 'block'">Final Submit</button>
+  </div>
+  <p class="done" id="ok">Application submitted (mock). Application ID: DEMO-0000.</p>
+</main>
+<script>
+  const rows = [
+    ["Full Name", "name"], ["Date of Birth", "dob"], ["Gender", "gender"], ["Category", "category"],
+    ["District", "district"], ["Annual Family Income", "income"], ["Income Certificate No.", "incno"],
+    ["10th Passing Year", "sscy"], ["10th Percentage", "sscp"], ["IFSC Code", "ifsc"],
+    ["Aadhaar Number", null], ["Bank Account Number", null],
+  ];
+  const t = document.getElementById("t");
+  for (const [label, id] of rows) {
+    const tr = t.insertRow();
+    tr.insertCell().textContent = label;
+    tr.insertCell().textContent = id ? sessionStorage.getItem("mock." + id) || "—" : "•••• (hidden)";
+  }
+</script>
+</body>
+</html>

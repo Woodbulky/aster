@@ -6,7 +6,7 @@ import { accessToken, API_URL } from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import { Player } from "@/lib/voice/player";
-import type { AgentStateName, Card, ClientMsg, ConfirmProfilePayload, ServerMsg, TurnMetrics, UiEventName } from "@/lib/ws/protocol";
+import type { AgentStateName, Card, ClientMsg, ConfirmProfilePayload, FrameReason, Guidance, ServerMsg, TurnMetrics, UiEventName } from "@/lib/ws/protocol";
 
 export type Item =
   | { kind: "msg"; id: string; role: "user" | "assistant"; text: string; lang: Lang; streaming?: boolean }
@@ -16,7 +16,7 @@ export type Status = "connecting" | "open" | "offline" | "denied";
 const NO_RETRY = new Set([4400, 4401, 4404]); // bad hello / signed out / not your session
 
 /** Cards worth showing again after a reload (the result of a check, not a question). */
-const KEPT_CARDS = ["check_eligibility", "save_research", "request_documents", "get_document_status", "ask_resolution", "resolve_flag", "readiness_summary"];
+const KEPT_CARDS = ["check_eligibility", "save_research", "request_documents", "get_document_status", "ask_resolution", "resolve_flag", "readiness_summary", "start_form_fill"];
 
 /** History (user + assistant messages, pending confirm cards, eligibility/research cards) via
  * RLS, so a reload shows the conversation so far. */
@@ -72,6 +72,8 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<TurnMetrics | null>(null);
+  const [guidance, setGuidance] = useState<Guidance | null>(null);
+  const [paused, setPaused] = useState<string | null>(null); // pause_guidance reason (login/OTP/submit…)
   const [player] = useState(() => new Player());
   const ws = useRef<WebSocket | null>(null);
   const loaded = useRef(false);
@@ -137,6 +139,16 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
           setMetrics(rest);
           break;
         }
+        case "guidance": {
+          const { type: _type, ...g } = m;
+          void _type;
+          setGuidance(g);
+          if (!g.sensitive) setPaused(null);
+          break;
+        }
+        case "pause_guidance":
+          setPaused(m.reason);
+          break;
         case "error":
           setError(m.message);
           break;
@@ -221,11 +233,23 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     [send, lang],
   );
 
+  /** One screen frame: header, then ONE binary JPEG (FORM_FILL.md frame policy is the caller's). */
+  const sendFrame = useCallback(
+    (jpeg: ArrayBuffer, reason: FrameReason) => {
+      if (!send({ type: "screen_frame", frame_id: crypto.randomUUID(), reason })) return false;
+      ws.current!.send(jpeg);
+      return true;
+    },
+    [send],
+  );
+
   /** Barge-in: silence Aster now and cancel the turn on the server. */
   const interrupt = useCallback(() => {
     player.stop();
     send({ type: "interrupt" });
   }, [send, player]);
 
-  return { items, phase, agent, status, error, metrics, player, sendText, sendUi, sendAudio, interrupt };
+  const resume = useCallback(() => setPaused(null), []);
+
+  return { items, phase, agent, status, error, metrics, player, guidance, paused, resume, sendText, sendUi, sendAudio, sendFrame, interrupt };
 }

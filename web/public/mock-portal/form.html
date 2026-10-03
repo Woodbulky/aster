@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+<title>Application Form — Demo Scholarship Portal</title>
+</head>
+<body>
+<div class="mock">MOCK PORTAL — for the Aster demo only. Not a government website. Do not enter real details.</div>
+<header><h1>Demo Scholarship Portal</h1><p>Student scholarship applications (mock)</p></header>
+<main>
+  <h2>Scholarship Application Form</h2>
+  <p class="hint">Fill every field marked <span class="req">*</span> exactly as on your documents.</p>
+  <!-- The options include the demo account's values (backend/scripts/seed_demo_user.py + specimens). -->
+  <form onsubmit="save(); location.href = 'submit.html'; return false">
+    <fieldset><legend>Personal Information</legend><div class="grid">
+      <div><label for="name">Applicant Full Name (as per Aadhaar) <span class="req">*</span></label><input id="name" autocomplete="off"></div>
+      <div><label for="dob">Date of Birth (DD/MM/YYYY) <span class="req">*</span></label><input id="dob" placeholder="DD/MM/YYYY" autocomplete="off"></div>
+      <div><label for="gender">Gender <span class="req">*</span></label><select id="gender"><option value="">-- Select --</option><option>Male</option><option>Female</option><option>Transgender</option></select></div>
+      <div><label for="category">Category <span class="req">*</span></label><select id="category"><option value="">-- Select --</option><option>Open</option><option>OBC</option><option>SC</option><option>ST</option><option>VJ/NT</option><option>SBC</option><option>SEBC</option><option>EWS</option></select></div>
+      <div><label for="district">District <span class="req">*</span></label><select id="district"><option value="">-- Select --</option><option>Mumbai</option><option>Nagpur</option><option>Nashik</option><option>Pune</option><option>Satara</option><option>Thane</option></select></div>
+      <div><label for="aadhaar">Aadhaar Number <span class="req">*</span></label><input id="aadhaar" inputmode="numeric" maxlength="12" autocomplete="off"></div>
+    </div></fieldset>
+    <fieldset><legend>Income &amp; Education</legend><div class="grid">
+      <div><label for="income">Annual Family Income (₹) <span class="req">*</span></label><input id="income" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="incno">Income Certificate Number</label><input id="incno" autocomplete="off"></div>
+      <div><label for="sscy">10th (SSC) Passing Year <span class="req">*</span></label><select id="sscy"><option value="">-- Select --</option><option>2019</option><option>2020</option><option>2021</option><option>2022</option><option>2023</option></select></div>
+      <div><label for="sscp">10th (SSC) Percentage <span class="req">*</span></label><input id="sscp" inputmode="decimal" autocomplete="off"></div>
+    </div></fieldset>
+    <fieldset><legend>Bank Details</legend><div class="grid">
+      <div><label for="ifsc">IFSC Code <span class="req">*</span></label><input id="ifsc" autocomplete="off"></div>
+      <div><label for="acct">Bank Account Number <span class="req">*</span></label><input id="acct" inputmode="numeric" autocomplete="off"></div>
+    </div></fieldset>
+    <div class="btns"><button type="button" onclick="save()">Save Draft</button><button class="primary" type="submit">Save &amp; Next</button></div>
+  </form>
+</main>
+<script>
+  // Mock only: the review page reads these from this tab's sessionStorage (never Aadhaar or the
+  // account number). Nothing leaves the browser.
+  const ids = ["name", "dob", "gender", "category", "district", "income", "incno", "sscy", "sscp", "ifsc"];
+  function save() {
+    ids.forEach((id) => sessionStorage.setItem("mock." + id, document.getElementById(id).value));
+  }
+  ids.forEach((id) => {
+    const v = sessionStorage.getItem("mock." + id);
+    if (v) document.getElementById(id).value = v;
+  });
+</script>
+</body>
+</html>

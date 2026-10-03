@@ -26,5 +26,19 @@
   "why._generic": "I ask so the form can be filled correctly. You can skip anything you don't want to share.",
   "why._source": "Asked once for your Aster profile and reused across forms. Each scheme's exact rules are checked later against official sources.",
   "llm_unavailable": "Sorry, I can't think right now — my connection is down. Your cards and profile still work. Please try again in a minute.",
-  "reply_in": "(Answer in English. Do not mention the language.)"
+  "reply_in": "(Answer in English. Do not mention the language.)",
+  "fill.type": "This box is {label}. Type {value}.",
+  "fill.choose": "In {label}, choose “{option}”.",
+  "fill.identifier": "{label}: please type the number yourself from your {document}.",
+  "fill.check_doc": "Check this on your document",
+  "fill.page_done": "Everything on this page looks filled. Check it, then go to the next step.",
+  "fill.unreadable": "I couldn't read your screen. Tap Help to try again.",
+  "fill.looking": "Let me look at your screen…",
+  "fill.pause.login": "Please enter your username and password yourself. I'll wait.",
+  "fill.pause.otp": "Please type the OTP yourself. I won't read it. I'll wait.",
+  "fill.pause.captcha": "Please type the captcha yourself. I'll wait.",
+  "fill.pause.payment": "This is a payment page. Please do this yourself. I'll wait.",
+  "fill.pause.submit_confirm": "Review everything carefully. When you're ready, you can submit.",
+  "fill.no_writer": "I can see your page, but I can't work out the next step right now. Ask me again in a moment.",
+  "fill.doc_default": "document"
 }

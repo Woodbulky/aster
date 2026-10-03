@@ -174,3 +174,21 @@ def readiness_summary(ctx: Ctx, _: NoArgs) -> ToolResult:
         "values": len(payload["fields"]),
     }
     return ToolResult(ok=True, data=data, card=Card(kind="readiness", payload=payload))
+
+
+@register(
+    "start_form_fill",
+    "Show the button that opens guided filling: the user shares the portal tab and Aster guides "
+    "them field by field. Call it when the user wants to fill the form now.",
+    "Getting guided filling ready",
+    NoArgs,
+)
+def start_form_fill(ctx: Ctx, _: NoArgs) -> ToolResult:
+    s = ctx.session
+    payload = {
+        "session_id": s["id"],
+        "scheme": s.get("scheme_name") or "",
+        "portal_url": s.get("portal_url"),  # from _portal.json via set_form, never from the LLM
+    }
+    data = {"card": "start_screen_share", "rule": "Tell the user to open it on a laptop in Chrome."}
+    return ToolResult(ok=True, data=data, card=Card(kind="start_screen_share", payload=payload))

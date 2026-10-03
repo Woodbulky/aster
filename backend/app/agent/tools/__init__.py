@@ -25,6 +25,7 @@ class Ctx:
     message_id: str | None = None  # latest user message: the evidence for proposals
     input_mode: str = "text"  # how that message came in (voice | text): resolve_flag's "via"
     user_text: str = ""  # that message's words: a flag answer's reason must come from them
+    last_guidance: str = ""  # form_fill: the last instruction (not repeated; the VLM sees it)
 
 
 class Card(BaseModel):

@@ -11,7 +11,7 @@ from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.deps import Db, UserId
 from app.research.packs import DOC_TYPES
-from app.verify.checks import ResolveError, resolve
+from app.verify.checks import ResolveError, readiness, resolve
 from app.verify.pipeline import process_document
 
 router = APIRouter(prefix="/api/sessions/{session_id}")
@@ -117,3 +117,9 @@ def acknowledge_flag(
     session_id: UUID, flag_id: UUID, body: AcknowledgeIn, db: Db, user_id: UserId
 ) -> dict[str, Any]:
     return _resolve(db, user_id, session_id, flag_id, reason=body.reason, via="tap")
+
+
+@router.get("/readiness")
+def get_readiness(session_id: UUID, db: Db, user_id: UserId) -> dict[str, Any]:
+    """The readiness payload (values the form will use + sources): the /fill page's field list."""
+    return readiness(db, user_id, _session(db, user_id, session_id))

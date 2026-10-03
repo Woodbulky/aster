@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+<title>OTP Verification — Demo Scholarship Portal</title>
+</head>
+<body>
+<div class="mock">MOCK PORTAL — for the Aster demo only. Not a government website. Do not enter real details.</div>
+<header><h1>Demo Scholarship Portal</h1><p>Student scholarship applications (mock)</p></header>
+<main class="narrow">
+  <h2>OTP Verification</h2>
+  <p class="hint">An OTP was sent to your registered mobile number. (Mock: type any 6 digits.)</p>
+  <form onsubmit="location.href = 'form.html'; return false">
+    <p><label for="otp">Enter OTP <span class="req">*</span></label><input id="otp" inputmode="numeric" maxlength="6" autocomplete="off"></p>
+    <div class="btns"><button class="primary" type="submit">Verify OTP</button></div>
+  </form>
+</main>
+</body>
+</html>

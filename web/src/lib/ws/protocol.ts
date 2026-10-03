@@ -2,7 +2,7 @@
 import type { Lang } from "@/lib/i18n";
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
-export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed" | "flag_resolved";
+export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed" | "flag_resolved" | "screen_share_started";
 
 // ---------- client -> server ----------
 export type ClientMsg =
@@ -12,7 +12,10 @@ export type ClientMsg =
   | { type: "ping" }
   | { type: "audio_start"; mime: string; lang_hint: Lang | null } // then ONE binary frame, then audio_end
   | { type: "audio_end" }
-  | { type: "interrupt" };
+  | { type: "interrupt" }
+  | { type: "screen_frame"; frame_id: string; reason: FrameReason }; // then ONE binary frame (JPEG), held in backend memory only
+
+export type FrameReason = "utterance" | "change" | "manual";
 
 // ---------- cards ----------
 export type ConfirmProfilePayload = { proposal_id: string; updates: Record<string, string | number> };
@@ -111,6 +114,7 @@ export type ReadinessPayload = {
   fields: { field_key: string; label: string; value: string; source: string; confirmed: boolean }[];
   note: string;
 };
+export type StartScreenSharePayload = { session_id: string; scheme: string; portal_url: string | null };
 export type Card =
   | { card_id: string; kind: "confirm_profile"; payload: ConfirmProfilePayload }
   | { card_id: string; kind: "scheme_suggestions"; payload: SchemeSuggestionsPayload }
@@ -121,7 +125,30 @@ export type Card =
   | { card_id: string; kind: "contradiction"; payload: FlagPayload }
   | { card_id: string; kind: "missing_item"; payload: FlagPayload }
   | { card_id: string; kind: "low_confidence"; payload: FlagPayload }
-  | { card_id: string; kind: "readiness"; payload: ReadinessPayload };
+  | { card_id: string; kind: "readiness"; payload: ReadinessPayload }
+  | { card_id: string; kind: "start_screen_share"; payload: StartScreenSharePayload };
+
+/** One visible portal field. `value` is only ever one of the user's checked values (FORM_FILL.md). */
+export type GuideField = {
+  label: string;
+  field_key: string | null;
+  filled: boolean;
+  value: string | null; // what to type, in the portal's format
+  option_text: string | null; // dropdowns: the visible option to choose
+  source: string | null; // "Income certificate"
+  identifier: boolean; // Aadhaar / account number: typed from the document, never suggested
+  note: string | null;
+};
+export type Guidance = {
+  frame_id: string;
+  page_kind: string;
+  sensitive: boolean;
+  page_title: string;
+  instruction: string;
+  lang: Lang;
+  target: GuideField | null; // the field to fill now
+  fields: GuideField[];
+};
 
 // ---------- server -> client ----------
 export type ServerMsg =
@@ -137,7 +164,9 @@ export type ServerMsg =
   | { type: "transcript"; text: string; lang: Lang; provider: string }
   | { type: "tts_audio"; message_id: string; seq: number; mime: string } // the next binary frame is the audio
   | { type: "tts_unavailable"; message_id: string; seq: number; text: string; lang: Lang }
-  | ({ type: "turn_metrics" } & TurnMetrics);
+  | ({ type: "turn_metrics" } & TurnMetrics)
+  | ({ type: "guidance" } & Guidance)
+  | { type: "pause_guidance"; reason: string }; // stop sending frames until the page changes
 
 /** ms from the end of the user's utterance (server side). */
 export type TurnMetrics = {

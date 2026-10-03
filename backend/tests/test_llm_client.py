@@ -300,7 +300,7 @@ def test_sensitive_fallback_writes_audit_without_image(monkeypatch: pytest.Monke
             "u1",
             "s1",
             "llm.sensitive_fallback",
-            {"provider": "fallback", "kind": "document_image"},
+            {"provider": "groq", "kind": "document_image"},
         )
     ]
     assert "SECRETPIXELS" not in repr(rows)

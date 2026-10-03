@@ -14,6 +14,7 @@ import { ReadinessCard } from "@/components/cards/ReadinessCard";
 import { EligibilityCard } from "@/components/cards/EligibilityCard";
 import { ResearchSummaryCard } from "@/components/cards/ResearchSummaryCard";
 import { SchemeSuggestionsCard } from "@/components/cards/SchemeSuggestionsCard";
+import { StartScreenShareCard } from "@/components/cards/StartScreenShareCard";
 import { completion } from "@/components/profile/ProfileForm";
 import { LatencyOverlay } from "@/components/voice/LatencyOverlay";
 import { useShell } from "@/components/shell/AppShell";
@@ -44,6 +45,7 @@ const PHASE_LABEL: Record<string, string> = {
   documents: "Collecting documents",
   verification: "Checking your documents",
   ready: "Ready to fill the form",
+  form_fill: "Filling the form",
 };
 
 const STATUS_LABEL: Record<Exclude<Status, "open">, string> = {
@@ -181,6 +183,8 @@ export default function ChatSessionPage() {
                         <FlagCard payload={card.payload} onAnswered={(id) => sendUi("flag_resolved", { flag_id: id })} />
                       ) : card.kind === "readiness" ? (
                         <ReadinessCard payload={card.payload} />
+                      ) : card.kind === "start_screen_share" ? (
+                        <StartScreenShareCard payload={card.payload} />
                       ) : (
                         <ResearchSummaryCard payload={card.payload} />
                       )}

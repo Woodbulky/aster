@@ -412,3 +412,58 @@ Part 1 (slice a, commit `2e9ed37`) is above. Realtime was trimmed (user allowed 
 - `BLUR_MIN` is calibrated on a synthetic specimen; re-check on phone photos.
 - Two tabs on one session both get the pushed cards (in-process listeners, one backend instance).
 - Cleanup done (user request): the two demo-account sessions that held a team member's real documents (`86292a66…`, `27bb21fc…`) were deleted with their storage files (16 objects; messages, values, flags, rule logs and audit cascade), and mobile/caste/religion/local name cleared from the demo profile. SQL check: 0 rows, 0 objects left. Text already sent to the LLM providers (OCR lines, redacted) cannot be recalled. The dev account's own test session `491067fa…` still holds that member's documents (their own account).
+
+## 2026-10-03 · M7 Guided form filling 🚧 (built and verified over the WS; browser click-through pending)
+Built in the agreed order (a) mock portal + /fill + frame → guidance, (b) guardrails, (c) speech + PiP, (d) tests/docs/guardrails. User-approved changes: screen turns run in code, not as LLM tools; no QR code, no `grabFrame`, no `screen_share_stopped`.
+
+**What changed**
+- `web/public/mock-portal/`: login → OTP → form → review & Final Submit. Plain HTML, labelled MOCK, nothing typed leaves the browser, options include the demo account's values. Excluded from the auth proxy.
+- Backend:
+  - `agent/screen.py` + `prompts/screen.md`: frame (+ the user's words) → one vision call (`sensitive_kind="screen_frame"`) → post-processing in code → `guidance` (+ `pause_guidance`) → spoken; a new instruction is stored as Aster's message (text only, `provider=screen`). "Let me look at your screen…" is spoken at once after Help/Done/speech.
+  - Post-processing: sensitive pages (kind, secret field labels, Final Submit button) → template + pause, no values; value whitelist via `same()`; identifiers never suggested (key or label); free text with an unknown number dropped; dates DD/MM/YYYY; dropdowns "choose"; `current_value` decides "filled" and is never passed on.
+  - `ws/voice.py`: `screen_frame` + one JPEG (≤ 1.5 MB), frames in memory (last 3), own limit 30/min, one analysis at a time, change frames ≥ 2 s apart; a voice turn in `form_fill` uses only the frame sent with that utterance, once. `screen_share_started`: ready → form_fill (audited), else `not_ready`.
+  - `start_form_fill` tool (card `start_screen_share`), `phase_form_fill.md`, `GET /api/sessions/{id}/readiness`, `fill.*` templates in en/hi/mr.
+- Web: `/fill/[sessionId]` (share tab, dHash frame policy in `lib/screen.ts`, `GuidePanel`, Document PiP via portal with side-by-side fallback, big Private mode button in the header and PiP, checked values with Copy; identifiers without Copy), `StartScreenShareCard`, readiness card "Start guided filling".
+- Docs: FORM_FILL (rewritten to match), AGENT, API, FRONTEND.
+
+**Seen live and fixed**
+- The model made up an OTP ("use 123456") and read the review table as boxes to type into → sensitive templates, number check, Final Submit rule.
+- An empty form came back "review" after the model was given its last instruction → not sent any more; a "review" page with empty known boxes and no submit button is a form.
+- "Applicant Full Name (as per Aadhaar)" matched the Aadhaar rule → identifier labels need a number word.
+- The model never set `appears_filled`, so guidance stuck on the first field → `current_value`.
+- "Type 2005-05-12" in a DD/MM/YYYY box; "Type Male" for a dropdown → fixed.
+
+**How verified**
+- pytest **319 passed** (`test_screen.py`: every sensitive page kind, secret labels, Final Submit, invented values and OTPs, identifiers by key and label, dropdowns, dates, filled detection, frames store, WS flow incl. not analysed before form_fill, oversized frame, phase audit, no frame bytes stored, spoken filler + instruction). ruff clean. Web: 6 node tests (incl. dHash), lint, typecheck, build.
+- **Live** (real `/ws`, Groq vision, Sarvam TTS; demo session `719301f3…`; frames = headless-Chrome screenshots of the mock pages, progressively filled):
+  - 5+ fields by voice: name → DOB → gender → category → district → Aadhaar ("type it yourself") → income 148000, one spoken instruction per Done frame; after the fixes "Type 12/05/2005", "In Gender, choose “Male”".
+  - Login and OTP → paused with templates, no values; submit page → `submit_confirm`, paused.
+  - Frames never written: my backend log has 0 `data:image`, 0 `/9j/`, 0 base64 runs, 0 JPEG bytes; SQL on the session: 0 frame-like rows in messages/audit/field values, 0 Storage objects from the runs, 0 messages with the typed (fake) Aadhaar number.
+- **Latency** (frame → spoken instruction): filler audio 0.4–2.0 s; Groq 4.5–5.7 s to guidance when not throttled, 12–53 s when throttled (8,000 tokens/min per org, ~3k per frame). 960 px / q0.6 was not faster and missed 2 of 12 fields, so frames stay 1280 / 0.7. GPU not measured (Kaggle worker offline).
+- `/guardrails`: 2 FAILs fixed (a voice turn could reuse a pre-Private-mode frame; a "review" page with a plain Submit could be un-paused).
+
+**Open issues**
+- Browser click-through not done yet: share picker, frame policy in a real tab, PiP, Private mode, mic utterance + frame.
+- GPU latency to measure; on Groq alone guidance queues after ~3 frames/min.
+- One unexplained `turn_failed` on the user's 8000 server during development (a stale `--reload` on Windows is the likely cause; not seen again in 10+ runs).
+- App `log.info` lines (screen_turn timings, turn_metrics) are not printed: `main.py` configures no logging.
+- Marathi/Hindi `fill.*` templates need a native speaker's review.
+
+## 2026-10-04 · M7 screen guidance: reader/writer split + reading cache (user-approved)
+A live test (session `0b5b6356…`, MahaDBT) showed ~28–68 s per screen reply, "Click Next" with no Next button, made-up Yes/No answers (EWS, renewal, registered labour), five questions in a row with no reply, then "choose what is true for you" for every question, and Marathi asked → English answered.
+
+**What changed**
+- `agent/screen.py`: **reader** (vision, GPU first; `prompts/screen_reader.md`; page kind, ≤ 8 fields as compact `label|type|filled|choices` strings, buttons; JSON schema; never box contents) + **writer** (text, Groq first via `chat_stream(prefer="fallback")`, GPU second; `prompts/screen_writer.md`; reading + checked values + last 10 messages + the question; `answer_source` before the instruction; explains and asks when no value is held; `reasoning_effort: "none"`; mr/hi must be Devanagari, one retry). Audited per Groq call: `llm.sensitive_fallback {"provider": "groq", "kind": "screen_text"}` (`fallback_llm_name` in config).
+- `Reader` cache per connection: a page change or Help starts the read in the background at once; a question on an unchanged page = writer only (no vision call, no "Let me look…"). Typed questions in `form_fill` use it too. The client sends its utterance frame as `change` when the page changed, so the read overlaps speech-to-text; the history query overlaps it too.
+- Guardrails kept in code on the writer's output: sensitive-page templates (writer not called), value whitelist (wrong value or unknown key → its words dropped; checked values said from the `fill.*` templates), identifiers (template only), unconfirmed 3+ digit numbers dropped, quoted buttons/answers not on the reading dropped. When the user asks, a repeated answer is said again.
+- Home page: the journey card follows the latest session's phase (no more "Coming soon").
+
+**How verified**
+- pytest **325 passed**; ruff clean; web lint + typecheck. New: the writer replies in Marathi when lang=mr (English is retried, twice → nothing); unconfirmed numbers are stripped from writer output; a cached-reading WS turn makes no vision call and says no "Let me look"; writer calls go to Groq first and are audited; compact field parsing; reader cache reads only the newest page.
+- Live latency (laptop → Kaggle T4 / Groq), see FORM_FILL.md: cached question → first audio ~2.2–2.4 s + STT (en and mr); new page on the GPU reader ~11 s (reader 8.5–9.2 s); Groq reader ~2 s. Writer on GPU (Groq down) 3.5–12 s, weaker Marathi.
+- Live quality (en/mr): "You said it is not a renewal application, so choose No" (from history); "This asks if you were admitted under EWS… If yes choose Yes, if not No. Were you…?" in Marathi.
+
+**Open issues**
+- New page on the GPU reader is ~11 s, over the 10 s target: the T4 decodes ~21 tok/s and takes ~4 s per new image. Options: cap the reader at 5 fields (~2 s less), or Groq-first reader (~2 s; a screen frame to Groq on every page change).
+- Groq free tier (8k tokens/min/org; a writer call ~1.5k) queues past ~5 questions/min.
+- Marathi wording of some terms (e.g. EWS as a "caste category") needs review.

@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
+from app.agent import screen
 from app.agent.orchestrator import run_tool_ui, run_turn, show_new_flag_cards, sync_phase
 from app.agent.tools import Ctx
 from app.config import Settings, get_settings
@@ -35,9 +36,11 @@ from app.ws.protocol import (
     FormSelected,
     Hello,
     Interrupt,
+    PhaseMsg,
     Ping,
     Pong,
     Ready,
+    ScreenFrame,
     TranscriptMsg,
     TtsAudio,
     TtsUnavailable,
@@ -51,6 +54,9 @@ log = logging.getLogger(__name__)
 HELLO_TIMEOUT_S = 10.0
 RATE_LIMIT = 30  # messages per minute (ARCHITECTURE "Security")
 MAX_AUDIO_BYTES = 2_000_000  # one utterance
+MAX_FRAME_BYTES = 1_500_000  # one JPEG screen frame (<= 1280 px wide)
+FRAME_LIMIT = 30  # screen frames per minute, on top of RATE_LIMIT (FORM_FILL: <= 1 per 3 s)
+CHANGE_MIN_S = 2.0  # "the screen changed" frames closer than this are kept but not analysed
 # Close codes the client must not retry on.
 BAD_HELLO, UNAUTHORIZED, NOT_FOUND = 4400, 4401, 4404
 
@@ -162,12 +168,62 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
         nonlocal spoken
         if "user_text" in kw:
             spoken = False
+            if ctx.session["phase"] == "form_fill" and (reader.busy or reader.has):
+                text = kw["user_text"]  # about the shared screen: the cached reading answers it
+                row = {"role": "user", "content": text, "lang": ctx.lang, "input_mode": "text"}
+                await asyncio.to_thread(repo.add_message, db, user_id, ctx.session["id"], row)
+                return await screen_turn(question=text, announce=True, voice=False)
         voice_out = speaker_for(ctx.lang) if spoken else None
         await run_turn(s, ctx, send, assistant_name=name, speaker_factory=voice_out, **kw)
+
+    frames = screen.Frames()
+    # The vision reading of the shared screen, per connection: a new page is read in the
+    # background as soon as it arrives; questions about an unchanged page reuse it.
+    reader = screen.Reader(lambda frame: screen.read_screen(s, ctx, frame))
+    auto: asyncio.Task | None = None  # the guidance turn a page change started
+    last_change = 0.0
+
+    async def screen_turn(
+        question: str | None = None,
+        announce: bool = False,
+        voice: bool = True,
+        talk: Awaitable[list] | None = None,
+    ) -> None:
+        speak = speaker_for(ctx.lang) if voice else None
+        g = await screen.run_screen_turn(s, ctx, send, reader, question, speak, announce, talk)
+        # The page moved on while this turn spoke: guide the newer page too.
+        while not question and (reader.busy or reader.frame_id not in (None, g.frame_id)):
+            g = await screen.run_screen_turn(s, ctx, send, reader, None, speaker_for(ctx.lang))
+
+    def on_frame(head: ScreenFrame, data: bytes) -> None:
+        nonlocal last_change, auto
+        frames.put(head.frame_id, data, head.reason)
+        if head.reason == "utterance" or ctx.session["phase"] != "form_fill":
+            return  # an utterance frame waits for its transcript (voice_turn)
+        now = time.monotonic()
+        if head.reason == "change":
+            if now - last_change < CHANGE_MIN_S:
+                return
+            last_change = now
+        reader.refresh(head.frame_id, data)  # the vision read starts now, in the background
+        if head.reason == "change" and auto and not auto.done():
+            return  # that turn guides the newest reading
+        manual = head.reason == "manual"
+        start(lambda: screen_turn(announce=manual), preempt=False)
+        auto = current
 
     async def voice_turn(audio: bytes, head: AudioStart) -> None:
         nonlocal spoken
         t0 = time.monotonic()
+        filling = ctx.session["phase"] == "form_fill"
+        # Form filling: the recent talk loads while the speech is transcribed (a cached answer
+        # is then the writer call alone).
+        sid = ctx.session["id"]
+        talk = (
+            asyncio.ensure_future(asyncio.to_thread(repo.list_messages, db, user_id, sid, 16))
+            if filling
+            else None
+        )
         try:
             tr = await speech.transcribe(s, audio, head.mime, head.lang_hint)
         except SpeechUnavailable:
@@ -181,6 +237,15 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
         # Replies follow the reply-language toggle (hello.lang); a language switch reconnects
         # with the new hello. What the user actually spoke is stored on their message.
         spoken = True
+        shot = frames.take_utterance() if filling else None
+        if filling and (shot or reader.busy or reader.has):
+            # The user asked about the screen. An unchanged page uses the cached reading (the
+            # client sends a "change" frame instead when the page changed): no vision call.
+            if shot and not (reader.busy or reader.has):
+                reader.refresh(*shot)
+            row = {"role": "user", "content": tr.text, "lang": tr.lang, "input_mode": "voice"}
+            await asyncio.to_thread(repo.add_message, db, user_id, ctx.session["id"], row)
+            return await screen_turn(question=tr.text, announce=True, talk=talk)
         await run_turn(
             s,
             ctx,
@@ -213,20 +278,40 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
     unsubscribe = pipeline.subscribe(ctx.session["id"], document_done)
     # ponytail: per-connection limit; per-user across tabs if abuse shows up.
     recent: deque[float] = deque()
+    shots: deque[float] = deque()
     pending: AudioStart | None = None  # audio_start seen, waiting for its binary frame
     audio: bytes | None = None
+    shot: ScreenFrame | None = None  # screen_frame seen, waiting for its JPEG
+
+    async def over(times: deque[float], limit: int) -> bool:
+        now = time.monotonic()
+        while times and now - times[0] > 60:
+            times.popleft()
+        if len(times) >= limit:
+            await send(ErrorMsg(code="rate_limited", message="too many messages, slow down"))
+            return True
+        times.append(now)
+        return False
+
     try:
         while True:
             frame = await ws.receive()
             if frame["type"] == "websocket.disconnect":
                 return
-            now = time.monotonic()
-            while recent and now - recent[0] > 60:
-                recent.popleft()
-            if len(recent) >= RATE_LIMIT:
-                await send(ErrorMsg(code="rate_limited", message="too many messages, slow down"))
+            if shot is not None and frame.get("bytes") is not None:
+                head, shot = shot, None
+                if len(frame["bytes"]) > MAX_FRAME_BYTES:
+                    await send(ErrorMsg(code="bad_frame", message="screen frame too large"))
+                else:
+                    on_frame(head, frame["bytes"])
                 continue
-            recent.append(now)
+            shot = None
+            try:  # screen frames have their own limit; everything else shares RATE_LIMIT
+                is_shot = json.loads(frame.get("text") or "{}").get("type") == "screen_frame"
+            except (json.JSONDecodeError, AttributeError):
+                is_shot = False
+            if await over(shots if is_shot else recent, FRAME_LIMIT if is_shot else RATE_LIMIT):
+                continue
             if frame.get("bytes") is not None:
                 if pending and audio is None and len(frame["bytes"]) <= MAX_AUDIO_BYTES:
                     audio = frame["bytes"]
@@ -251,6 +336,10 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                     else:
                         await send(ErrorMsg(code="bad_audio", message="audio_end without audio"))
                     pending, audio = None, None
+                case ScreenFrame():
+                    shot = msg
+                case UiEvent(name="screen_share_started"):
+                    start(lambda: _screen_share_started(ctx, send), preempt=False)
                 case Interrupt():
                     if current and not current.done():
                         current.cancel()  # run() tells the client the agent is idle
@@ -281,6 +370,7 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                     pass  # already authenticated; reconnects open a new socket
     finally:
         unsubscribe()
+        reader.close()
         if current and not current.done():
             current.cancel()
 
@@ -374,3 +464,24 @@ async def _flag_resolved(ctx: Ctx, send, payload: dict, turn) -> None:
         f"left: {json.dumps([flag_summary(f) for f in left], ensure_ascii=False)}. Thank them in a "
         "few words; if a flag is left, explain the next one (its card is on screen)."
     )
+
+
+async def _screen_share_started(ctx: Ctx, send) -> None:
+    """ready -> form_fill, in code. Guided filling starts only once nothing blocks the form."""
+    await sync_phase(ctx, send)  # a blocking flag may have opened since
+    phase = ctx.session["phase"]
+    if phase == "form_fill":
+        return
+    if phase != "ready":
+        return await send(
+            ErrorMsg(code="not_ready", message="finish checking your documents in the chat first")
+        )
+    row = await asyncio.to_thread(
+        repo.update_session, ctx.db, ctx.user_id, ctx.session["id"], {"phase": "form_fill"}
+    )
+    ctx.session.update(row or {"phase": "form_fill"})
+    payload = {"from": "ready", "to": "form_fill"}
+    await asyncio.to_thread(
+        repo.write_audit, ctx.db, ctx.user_id, ctx.session["id"], "phase.changed", payload
+    )
+    await send(PhaseMsg(phase="form_fill"))

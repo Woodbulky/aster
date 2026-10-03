@@ -1,5 +1,4 @@
-"""WS messages (docs/API.md). Mirrored in web/src/lib/ws/protocol.ts — change both together.
-Screen messages arrive with M7."""
+"""WS messages (docs/API.md). Mirrored in web/src/lib/ws/protocol.ts — change both together."""
 
 import uuid
 from typing import Annotated, Any, Literal
@@ -35,6 +34,7 @@ class UiEvent(_In):
         "documents_requested",
         "document_processed",
         "flag_resolved",
+        "screen_share_started",
     ]
     payload: dict[str, Any] = {}
 
@@ -59,9 +59,17 @@ class Interrupt(_In):
     type: Literal["interrupt"]
 
 
+class ScreenFrame(_In):
+    """Followed by ONE binary frame (JPEG). Held in memory only, never written (guardrail 7)."""
+
+    type: Literal["screen_frame"]
+    frame_id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    reason: Literal["utterance", "change", "manual"]
+
+
 ClientMsg = TypeAdapter(
     Annotated[
-        Hello | UserText | UiEvent | Ping | AudioStart | AudioEnd | Interrupt,
+        Hello | UserText | UiEvent | Ping | AudioStart | AudioEnd | Interrupt | ScreenFrame,
         Field(discriminator="type"),
     ]
 )
@@ -173,3 +181,35 @@ class ErrorMsg(BaseModel):
 
 class Pong(BaseModel):
     type: Literal["pong"] = "pong"
+
+
+class GuideField(BaseModel):
+    """One visible portal field. value is only ever a checked value of the user's (FORM_FILL.md)."""
+
+    label: str
+    field_key: str | None = None
+    filled: bool = False
+    value: str | None = None  # what to type, in the portal's format
+    option_text: str | None = None  # dropdowns: the visible option to choose
+    source: str | None = None  # "Income certificate · L3"
+    identifier: bool = False  # Aadhaar / account number: typed from the document, never suggested
+    note: str | None = None
+
+
+class Guidance(BaseModel):
+    type: Literal["guidance"] = "guidance"
+    frame_id: str
+    page_kind: str
+    sensitive: bool
+    page_title: str
+    instruction: str
+    lang: Lang
+    target: GuideField | None = None  # the field to fill now
+    fields: list[GuideField] = []
+
+
+class PauseGuidance(BaseModel):
+    """Stop sending frames until the page changes (login/OTP/captcha/payment/submit)."""
+
+    type: Literal["pause_guidance"] = "pause_guidance"
+    reason: str

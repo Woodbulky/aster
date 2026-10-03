@@ -15,8 +15,8 @@
 | `eligibility` | research saved | `documents` via `request_documents` (tool or the card's Continue button); back to `research` if the user switches scheme | `check_eligibility`, `get_profile`, `propose_profile_update`, `fetch_url`, `request_documents`, `suggest_schemes`, `set_form` |
 | `documents` | user continues | `verification` via `run_verification` (the user says they are done) | `request_documents`, `get_document_status`, `run_verification`, `list_flags`, `ask_resolution`, `resolve_flag`, `explain_why_asked` |
 | `verification` | checks run | `ready` when no open blocking flag (resolved or acknowledged), in code | `run_verification`, `list_flags`, `ask_resolution`, `resolve_flag`, `readiness_summary`, `get_document_status`, `request_documents`, `explain_why_asked` |
-| `ready` | — | back to `verification` if a blocking flag opens; `form_fill` (M7) | `readiness_summary`, `list_flags`, `ask_resolution`, `resolve_flag`, `get_document_status`, `run_verification` (+ `start_form_fill` in M7) |
-| `form_fill` | screen share active | `done` | `analyze_screen`, `get_field`, `list_fields`, `pause_guidance` |
+| `ready` | — | back to `verification` if a blocking flag opens; `form_fill` on the `screen_share_started` UI event (code) | `readiness_summary`, `list_flags`, `ask_resolution`, `resolve_flag`, `get_document_status`, `run_verification`, `start_form_fill` |
+| `form_fill` | screen share started | `done` | Screen turns run in code (`agent/screen.py`, below). Words without a fresh frame go to the LLM with `readiness_summary`, `start_form_fill` |
 | `done` | user ends | — | `session_summary` |
 
 Transitions happen in code (`phases.py`) based on DB state, never because the LLM says so. The user can jump back ("change my income") → the orchestrator routes to the phase that owns that data. Jumps are logged in the audit trail.
@@ -46,8 +46,7 @@ A `card` is a UI payload sent to the client (see `docs/API.md`). Cards are how t
 | `resolve_flag` | `flag_id, choice?, new_value?, reason` | The user's answer by voice/text (see VERIFICATION.md "Resolution"); usually called in code from `agent/answers.py`. Returns the updated card |
 | `readiness_summary` | — | Card `readiness`: values + sources, blocking/warning/kept flags |
 | `start_form_fill` | — | Card `start_screen_share` (client prompts the user to share) |
-| `analyze_screen` | `frame_id` | Guidance JSON (see `docs/FORM_FILL.md`) |
-| `pause_guidance` | `reason` | Tells the client to pause frame sending |
+| `analyze_screen` / `pause_guidance` | — | Not LLM tools (M7, user-approved): `agent/screen.py` runs each screen turn in code — frame (+ the user's words) → one vision call → post-processing → `guidance` (+ `pause_guidance`) → spoken. See `docs/FORM_FILL.md` |
 | `session_summary` | — | Final recap card |
 
 ## System prompt (base, `app/agent/prompts/system.md`)

@@ -15,6 +15,7 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 | POST | `/api/sessions/{id}/documents` | `{document_id, doc_type, mime, quality?}` after the client uploads to Storage `<uid>/<sid>/<document_id>.<ext>` → 202, pipeline runs in the background (`documents.status`: uploaded → processing → extracted\|failed, `error`: ocr_unavailable\|llm_unavailable\|internal). 400 if the object is missing; posting a `failed` document again retries it, otherwise 409. No classifier: every upload slot is typed. There is no `/view` endpoint: the client reads `documents.ocr` (pages + lines with bbox) through RLS and signs `ocr.pages[].path` itself |
 | POST | `/api/sessions/{id}/flags/{flag_id}/resolve` | `{candidate_id?, value?, reason (3–300)}` → `{flag_id, status}`. A candidate of this flag or a typed value (not both) → `resolved` + a confirmed `field_values` row; neither → `acknowledged`. Always `via=tap` (voice answers go through `resolve_flag` with their message id). 400 bad answer, 409 already answered |
 | POST | `/api/sessions/{id}/flags/{flag_id}/acknowledge` | `{reason}` → keep as is (also for blocking flags: the reason is logged) |
+| GET | `/api/sessions/{id}/readiness` | The `readiness` card payload (values the form will use + sources). The `/fill` page's field list |
 | POST | `/api/consents` | `{scope, granted}` |
 | GET | `/api/sessions/{id}/audit` | audit events (own session only) |
 | DELETE | `/api/me` | delete the user's data (documents, sessions, profile) |
@@ -27,8 +28,8 @@ Client → server (JSON unless noted):
 | `user_text` | `text` |
 | `audio_start` | `mime, lang_hint?` → then ONE binary frame (audio, ≤ 2 MB) → `audio_end`. Errors: `bad_audio`, `no_speech`, `stt_unavailable` |
 | `interrupt` | — cancels the running turn (LLM + TTS); server answers `agent_state idle` |
-| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {scheme_key, portal?}`; M6: `documents_requested` (eligibility card button → checklist card in code), `flag_resolved {flag_id}` (after a tap answer → thanks + next flag), `document_processed {document_id}` (still accepted, but the server now pushes it itself when the pipeline ends, so the client does not send it); later: `screen_share_started/stopped`), `payload`. `form_selected` runs `set_form` → `get_knowledge_pack` → `check_eligibility` in code, not via the LLM; the LLM then only speaks the summary |
-| `screen_frame` | `frame_id, reason` → then ONE binary frame (JPEG) |
+| `ui_event` | `name` (M3: `profile_confirmed {proposal_id}`, `profile_rejected {proposal_id}`, `form_selected {scheme_key, portal?}`; M6: `documents_requested` (eligibility card button → checklist card in code), `flag_resolved {flag_id}` (after a tap answer → thanks + next flag), `document_processed {document_id}` (still accepted, but the server now pushes it itself when the pipeline ends, so the client does not send it); M7: `screen_share_started` (`ready` → `form_fill` in code, audited; from any other phase → error `not_ready`)), `payload`. `form_selected` runs `set_form` → `get_knowledge_pack` → `check_eligibility` in code, not via the LLM; the LLM then only speaks the summary |
+| `screen_frame` | `frame_id` (≤ 64), `reason: utterance\|change\|manual` → then ONE binary frame (JPEG ≤ 1.5 MB, else error `bad_frame`). Held in memory only (last 3 per connection), never written. Own limit: 30 frames/min, not counted in the 30 messages/min. Analysed only in `form_fill`, one at a time: `change` frames during an analysis or < 2 s apart are kept, not analysed; `manual` = Help/Done (spoken "Let me look…" first); `utterance` = sent with speech, used by that voice turn if ≤ 10 s old (the turn becomes a screen turn: the user's words go to the vision model as their question) |
 | `ping` | — |
 
 Server → client:
@@ -45,8 +46,8 @@ Server → client:
 | `tool_event` | `name, status: started\|done\|failed, label` |
 | `card` | `card_id, kind, payload` |
 | `phase` | `phase` |
-| `guidance` | analyze_screen result after post-processing |
-| `pause_guidance` | `reason` |
+| `guidance` | `{frame_id, page_kind, sensitive, page_title, instruction, lang, target: GuideField?, fields: [GuideField]}`; `GuideField = {label, field_key, filled, value, option_text, source, identifier, note}`. Post-processed in code (FORM_FILL.md): `value` is only ever a checked value of the user's; identifiers have `identifier: true` and no value; sensitive pages carry no values. A new `instruction` is also sent as `assistant_message` (+ TTS) and stored |
+| `pause_guidance` | `reason` = the page kind (login, otp, captcha, payment, submit_confirm, review). The client sends no frames until the page clearly changes or the user taps Resume |
 | `error` | `code, message` |
 | `pong` | — |
 

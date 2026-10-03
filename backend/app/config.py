@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     fallback_llm_base_url: str = ""
     fallback_llm_api_key: str = ""
     fallback_llm_model: str = ""
+    fallback_llm_name: str = "groq"  # the vendor, as named in audit rows
 
     # speech: Sarvam primary, Kaggle /asr as the STT fallback (no Bhashini credentials)
     sarvam_api_key: str = ""

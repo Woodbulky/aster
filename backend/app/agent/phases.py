@@ -78,7 +78,10 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "resolve_flag",
         "get_document_status",
         "run_verification",
+        "start_form_fill",
     ),
+    # Screen turns run in code (agent/screen.py); this is only for words without a fresh frame.
+    "form_fill": ("readiness_summary", "start_form_fill"),
 }
 
 

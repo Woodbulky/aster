@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCircle2, ClipboardCheck, OctagonAlert, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, MonitorUp, OctagonAlert, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 import type { ReadinessPayload } from "@/lib/ws/protocol";
@@ -52,6 +53,11 @@ export function ReadinessCard({ payload }: { payload: ReadinessPayload }) {
           ))}
         </dl>
       </details>
+      {p.ready && (
+        <Link href={`/fill/${p.session_id}`} className="btn-primary mt-3 inline-flex h-10 gap-2 rounded-xl px-4 text-sm">
+          <MonitorUp className="size-4" /> Start guided filling
+        </Link>
+      )}
       <p className="mt-3 text-xs text-muted-foreground">{p.note}</p>
     </section>
   );

@@ -51,7 +51,7 @@ STREAM_TIMEOUT = httpx.Timeout(30.0, connect=5.0)  # per-read gap once streaming
 class Route:
     provider: Provider
     # Sensitive input (document image, screen frame) going to the hosted fallback: an
-    # audit_events(action="llm.sensitive_fallback", payload={"provider": "fallback", "kind"}) row
+    # audit_events(action="llm.sensitive_fallback", payload={"provider": <vendor>, "kind"}) row
     # is written. The image/frame itself never goes in the payload (guardrail 7).
     audit: bool
 
@@ -242,11 +242,13 @@ async def chat_stream(
     sensitive_kind: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
+    prefer: Provider | None = None,
     **params: Any,
 ) -> AsyncIterator[Chunk]:
     """Stream an OpenAI-compatible chat completion. Images go in as `image_url` parts with a
     base64 data URI (Ollama does not fetch remote URLs). `sensitive_kind` (e.g. "document_image",
-    "screen_frame") marks the input as sensitive; it is required for any call with images."""
+    "screen_frame") marks the input as sensitive; it is required for any call with images.
+    `prefer` tries that provider first (the other one stays as its fallback)."""
     if _has_image(messages) and not sensitive_kind:
         raise ValueError("image input needs sensitive_kind")
     if sensitive_kind and not user_id:
@@ -265,7 +267,7 @@ async def chat_stream(
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         waits: list[float] = []
         async for chunk in _first_provider(
-            s, body, first_token_s, sensitive_kind, user_id, session_id, waits
+            s, body, first_token_s, sensitive_kind, user_id, session_id, waits, prefer
         ):
             yield chunk
         if not waits:
@@ -285,15 +287,17 @@ async def _first_provider(
     user_id: str | None,
     session_id: str | None,
     waits: list[float],
+    prefer: Provider | None = None,
 ) -> AsyncIterator[Chunk]:
     """Stream from the first provider that answers. Rate-limited providers add their wait to
     `waits` and return without raising, so the caller can wait and retry; other failures count
     on the breaker and raise LLMUnavailable once every provider failed."""
     errors: list[str] = []
-    for p in await asyncio.to_thread(providers, s):
+    order = await asyncio.to_thread(providers, s)
+    for p in sorted(order, key=lambda p: p != prefer):
         if sensitive_kind and p == "fallback":
             # Fail closed: no audit row, no sensitive call.
-            payload = {"provider": "fallback", "kind": sensitive_kind}
+            payload = {"provider": s.fallback_llm_name, "kind": sensitive_kind}
             await asyncio.to_thread(
                 repo.write_audit,
                 repo.get_db(),

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+<title>Applicant Login — Demo Scholarship Portal</title>
+</head>
+<body>
+<div class="mock">MOCK PORTAL — for the Aster demo only. Not a government website. Do not enter real details.</div>
+<header><h1>Demo Scholarship Portal</h1><p>Student scholarship applications (mock)</p></header>
+<main class="narrow">
+  <h2>Applicant Login</h2>
+  <p class="hint">Log in with your portal username and password.</p>
+  <!-- Navigates only: nothing typed here is sent anywhere. -->
+  <form onsubmit="location.href = 'otp.html'; return false">
+    <p><label for="u">Username <span class="req">*</span></label><input id="u" autocomplete="off"></p>
+    <p><label for="p">Password <span class="req">*</span></label><input id="p" type="password" autocomplete="off"></p>
+    <div class="btns"><button class="primary" type="submit">Login</button></div>
+  </form>
+</main>
+</body>
+</html>

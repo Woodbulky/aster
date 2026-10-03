@@ -9,7 +9,7 @@
 | `/chat` | Conversation UI: avatar welcome, prompt cards, message list, composer (text + mic), reply-language toggle, context panel. Becomes `/chat/[sessionId]` with M3 |
 | `/documents` | General documents vault (10th/12th marksheets, domicile, income, caste, caste validity) → Supabase Storage `documents/<uid>/general/<doc_type>/<ts>.<ext>` |
 | `/profile` | View/edit the profile (fields = `profiles` columns) and companion settings |
-| `/fill/[sessionId]` | Desktop guided filling: share-screen button, PiP launcher, field list with copy buttons |
+| `/fill/[sessionId]` | Desktop guided filling (M7): share the portal tab (`getDisplayMedia`, browser surface), frame policy in `lib/screen.ts` (dHash), `GuidePanel` (instruction, field value + Copy + source, Done, Help, mic) in the page or in a Document PiP window (React portal; side-by-side message where unsupported), a big **Private mode** button (no frames at all, speech stopped) in the header and in PiP, "your checked values" list with Copy (identifiers: "type it from your document", no Copy), "Practice on the demo portal" link (`/mock-portal/login.html`). Mobile: "open on a laptop" + the link (no QR) |
 | `/sessions` | Past form sessions |
 
 ## Avatar (`components/avatar/`)
@@ -19,7 +19,7 @@
 - Optional upgrade: Rive character with the same state names.
 
 ## Cards (`components/cards/`), driven by the WS `card` event
-`confirm_profile`, `scheme_suggestions`, `research_summary`, `eligibility` (+ "Continue to documents"), `document_checklist` (upload per item, blur check, status chips), `field_review` (value + source chip → `DocumentViewer`: the page with the cited lines boxed; no box for vision-read lines), `contradiction` / `missing_item` / `low_confidence` (one `FlagCard`: candidates with source chips, pick or type, reason, "Keep as is"/"Continue anyway"; only the latest card per flag is shown), `readiness` (`ReadinessCard`), `start_screen_share`, `session_summary`.
+`confirm_profile`, `scheme_suggestions`, `research_summary`, `eligibility` (+ "Continue to documents"), `document_checklist` (upload per item, blur check, status chips), `field_review` (value + source chip → `DocumentViewer`: the page with the cited lines boxed; no box for vision-read lines), `contradiction` / `missing_item` / `low_confidence` (one `FlagCard`: candidates with source chips, pick or type, reason, "Keep as is"/"Continue anyway"; only the latest card per flag is shown), `readiness` (`ReadinessCard`, + "Start guided filling" when ready), `start_screen_share` (`StartScreenShareCard` → `/fill/[sessionId]`), `session_summary`.
 Each card's actions call REST endpoints. The result is posted back into the conversation as a `ui_event` so the agent knows.
 
 ## State & data
