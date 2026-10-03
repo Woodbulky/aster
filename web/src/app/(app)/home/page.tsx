@@ -10,18 +10,37 @@ import { useShell } from "@/components/shell/AppShell";
 import { useAssistant } from "@/lib/api";
 import { GENERAL_DOCS, listGeneralDocs } from "@/lib/general-docs";
 import { LANGS } from "@/lib/i18n";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+
+// backend/app/agent/phases.py order: a step is done once the session is past it.
+const PHASES = ["onboarding", "choose_form", "research", "eligibility", "documents", "verification", "ready", "form_fill", "done"];
+type Session = { id: string; phase: string; scheme_name: string | null };
 
 export default function HomePage() {
   const { user, profile, openSetup } = useShell();
   const assistant = useAssistant();
   const [docCount, setDocCount] = useState<number | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     listGeneralDocs()
       .then((d) => setDocCount(Object.keys(d).length))
       .catch(() => setDocCount(0));
+    // The latest active session, read via RLS (same query as openSession, without creating one).
+    void createClient()
+      .from("form_sessions")
+      .select("id, phase, scheme_name")
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => setSession(data?.[0] ?? null));
   }, []);
+
+  const at = Math.max(0, PHASES.indexOf(session?.phase ?? "onboarding"));
+  const past = (phase: string) => at >= PHASES.indexOf(phase);
+  const chat = session ? `/chat/${session.id}` : "/chat";
+  const scheme = session?.scheme_name;
 
   const pct = completion(profile);
   const first = (profile?.full_name?.trim() || user?.name || "").split(/\s+/)[0];
@@ -30,9 +49,9 @@ export default function HomePage() {
   const journey = [
     { title: "Build your profile", note: `${pct}% complete`, done: pct === 100, action: () => openSetup(0) },
     { title: "Add your general documents", note: docCount === null ? "Checking…" : `${docCount} of ${GENERAL_DOCS.length} saved`, done: docCount === GENERAL_DOCS.length, href: "/documents" },
-    { title: "Choose a scholarship", note: `${assistant.assistant_name} researches eligibility and documents with sources`, soon: true },
-    { title: "Check your documents for the scheme", note: "Reads them, links every value, flags mismatches", soon: true },
-    { title: "Fill the official portal together", note: "Share your screen; get guided field by field", soon: true },
+    { title: "Choose a scholarship", note: past("documents") && scheme ? scheme : `${assistant.assistant_name} researches eligibility and documents with sources`, done: past("documents"), href: chat },
+    { title: "Check your documents for the scheme", note: past("ready") ? "Checked, no blockers left" : "Reads them, links every value, flags mismatches", done: past("ready"), soon: !past("documents"), href: chat },
+    { title: "Fill the official portal together", note: past("done") ? "Finished" : "Share your screen; get guided field by field", done: past("done"), soon: !past("ready"), href: past("form_fill") && session ? `/fill/${session.id}` : chat },
   ];
 
   return (
@@ -93,7 +112,7 @@ export default function HomePage() {
                   <small className="block text-sm text-muted-foreground">{j.note}</small>
                 </span>
                 {j.soon ? (
-                  <span className="chip bg-butter text-[#6d5d2f]">Coming soon</span>
+                  <span className="chip bg-butter text-[#6d5d2f]">Not yet</span>
                 ) : (
                   <ArrowRight className="size-4 text-muted-foreground" />
                 )}
@@ -102,7 +121,7 @@ export default function HomePage() {
             const cls = "flex w-full items-center gap-4 rounded-2xl px-3 py-4 text-left";
             return (
               <li key={j.title} className="border-b border-border last:border-0">
-                {j.href ? (
+                {j.href && !j.soon ? (
                   <Link href={j.href} className={cn(cls, "hover:bg-muted")}>{body}</Link>
                 ) : j.action ? (
                   <button onClick={j.action} className={cn(cls, "hover:bg-muted")}>{body}</button>
