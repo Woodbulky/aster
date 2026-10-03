@@ -467,3 +467,9 @@ A live test (session `0b5b6356…`, MahaDBT) showed ~28–68 s per screen reply,
 - New page on the GPU reader is ~11 s, over the 10 s target: the T4 decodes ~21 tok/s and takes ~4 s per new image. Options: cap the reader at 5 fields (~2 s less), or Groq-first reader (~2 s; a screen frame to Groq on every page change).
 - Groq free tier (8k tokens/min/org; a writer call ~1.5k) queues past ~5 questions/min.
 - Marathi wording of some terms (e.g. EWS as a "caste category") needs review.
+
+## 2026-10-04 · M7 screen reader: Groq first (user delegated the choice)
+- Measured on cold images: GPU reader 10.5–13.7 s at 8 fields, 9.6–11.9 s at 5 → a 5-field cap does not reach < 10 s. Groq reader 1.3–3.6 s (json_schema accepted, ~1.3k tokens).
+- Chosen: reader Groq first, GPU second (`SCREEN_READER_PRIMARY=fallback`, default; `gpu` switches back); writer Groq first. Frames now go to Groq on each page change (audited `llm.sensitive_fallback` `screen_frame`). 8 fields kept.
+- Verified live with 9 Groq keys (separate orgs): cached question → first audio ~2.4–2.5 s, new page ~4.0–5.8 s (en, mr); burst of 4 pages + 12 questions in 16 s, no throttling; Groq down (bad key) → GPU for both, works (new page ~18 s, cached ~5.5–9.5 s, weaker Marathi). pytest 326 passed.
+- Open: Render's `FALLBACK_LLM_API_KEY` must hold the same keys as the laptop `.env`. Benchmarking spends the daily Groq budget (200k/org): avoid load tests on demo day.

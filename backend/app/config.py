@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     fallback_llm_api_key: str = ""
     fallback_llm_model: str = ""
     fallback_llm_name: str = "groq"  # the vendor, as named in audit rows
+    # Screen reader (form filling): who reads a new page first. Groq ~1-2 s vs ~10-13 s on the
+    # T4 (measured 2026-10-04); a rate-limited Groq falls through to the GPU at once.
+    screen_reader_primary: Literal["gpu", "fallback"] = "fallback"
 
     # speech: Sarvam primary, Kaggle /asr as the STT fallback (no Bhashini credentials)
     sarvam_api_key: str = ""

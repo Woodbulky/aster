@@ -16,7 +16,7 @@
 
 ## Backend (`app/agent/screen.py`, in code — no LLM tool loop)
 Two steps (seen live: one 8B vision call that both read the page and wrote the guidance took ~28 s a turn and answered Marathi in English):
-- **Reader** (vision; GPU first, fallback second; `prompts/screen_reader.md`, `sensitive_kind="screen_frame"`): the page only. A JSON schema keeps it on one line and caps it; fields are compact strings (`"Gender|radio|0|Male/Female"` = label|type|filled|choices; JSON keys on every field doubled the output, 247 vs 140 tokens, ~5 s on the T4). Max 8 fields from the first empty one. Never what a box contains.
+- **Reader** (vision; Groq first, GPU second — `SCREEN_READER_PRIMARY`, default `fallback`: a new page on the T4 took 10–13 s even capped at 5 fields, on Groq 1.3–3.6 s; `prompts/screen_reader.md`, `sensitive_kind="screen_frame"`): the page only. A JSON schema keeps it on one line and caps it; fields are compact strings (`"Gender|radio|0|Male/Female"` = label|type|filled|choices; JSON keys on every field doubled the output, 247 vs 140 tokens, ~5 s on the T4). Max 8 fields from the first empty one. Never what a box contains.
 ```json
 {"page_kind": "login|otp|captcha|form|review|submit_confirm|payment|other", "page_title": "≤ 5 words",
  "fields": ["Is this a Renewal Application?|radio|0", "Annual Family Income|text|0"], "buttons": ["Save", "Cancel"]}
@@ -33,12 +33,14 @@ Post-processing on the writer's output (code, tested in `tests/test_screen.py`):
 - A new instruction is sent as `guidance` + `assistant_message`, spoken (TTS), and stored as Aster's message (text only, `provider=screen`). A repeat is skipped for automatic frames only: when the user asked, it is said again.
 - `portal_field_map` is not sent (every pack has it empty); add it to the prompt when a pack fills it.
 
-## Latency (measured 2026-10-04, laptop → Kaggle T4 / Groq; synthetic MahaDBT-style page, 7 fields)
-| | Reader (new page) | Writer | History query | First TTS chunk | Cached question → first audio* | New page → first audio* |
-|---|---|---|---|---|---|---|
-| GPU reader + Groq writer, en | 8.6 s | 0.4–0.7 s | 0.8 s | 1.0 s | ~2.2 s | ~11 s |
-| GPU reader + Groq writer, mr | 8.5 s | 0.5–0.6 s | 0.3 s | 1.5 s | ~2.4 s | ~11 s |
-| Groq reader + Groq writer, en | 2.0 s | 0.8 s | 0.8 s | 0.9 s | ~2.4 s | ~4.5 s |
-| Groq writer down → GPU writer, en / mr | 9.2 / 8.6 s | 3.5–5.9 s | | | ~6.5–7 s | ~15 s |
+## Latency (measured 2026-10-04, laptop → Groq / Kaggle T4; synthetic MahaDBT-style page, 7 fields; to first audio, plus speech-to-text)
+**In use: Groq reader + Groq writer, GPU behind both.**
+| Setup | Reader (new page) | Writer | Cached question | New page |
+|---|---|---|---|---|
+| **Groq reader + Groq writer, en** (in use) | 3.3 s | 0.4–0.5 s | **~2.5 s** | **~5.8 s** |
+| **Groq reader + Groq writer, mr** (in use) | 1.6 s | 0.8–0.9 s | **~2.4 s** | **~4.0 s** |
+| Burst: 4 pages + 12 questions in 16 s (9 keys) | 1.4–3.2 s | median 0.67 s, max 0.86 s | no throttling | |
+| GPU reader + Groq writer, en / mr | 8.5–13.7 s (5 fields: 9.6–11.9 s) | 0.4–0.6 s | ~2.2–2.4 s | ~11 s |
+| Groq down → GPU for both, en / mr | 12.1 / 11.8 s | 3.3–11 s, weaker Marathi | ~5.5–9.5 s | ~17.5–18.5 s |
 
-\* plus speech-to-text, which the history query now overlaps. GPU reader: ~21 tok/s decode, ~140 tokens, ~4 s to take in a new image (Ollama resizes every frame to the same size: 768/1024/1280 px cost the same). Groq's free tier allows 8,000 tokens/min per organisation and a writer call is ~1.5k tokens: past ~5 questions/min calls wait (seen in the benchmark: 8 s writer calls).
+The GPU reader decodes ~21 tok/s (~140 tokens) and takes ~4 s per new image (Ollama resizes every frame to the same size: 768/1024/1280 px cost the same). A Groq read is ~1.3k tokens, a writer call ~1.5k. Each Groq organisation allows 8k tokens/min and 200k/day (two keys ran out of their daily budget during benchmarking); `FALLBACK_LLM_API_KEY` takes several keys from different orgs, and a 429 moves to the next key, then to the GPU at once (no waiting while a provider is left).

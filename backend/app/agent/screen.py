@@ -1,7 +1,8 @@
 """Guided form filling (FORM_FILL.md), in two steps (seen live: one 8B vision call that both read
 the page and wrote the guidance took ~28 s a turn and answered Marathi in English):
-- READER: the vision model reads the page (fields, options, filled or not, buttons). It runs only
-  for a new page or on Help, in the background; the reading is cached per connection (Reader).
+- READER: a vision model reads the page (fields, options, filled or not, buttons): Groq first,
+  the GPU second (settings.screen_reader_primary; a new page read on the T4 took 10-13 s). It runs
+  only for a new page or on Help, in the background; the reading is cached per connection.
 - WRITER: a text model (Groq first, the GPU second) writes what Aster says from the reading, the
   user's checked values and the recent talk. No image and no box contents go to it.
 The guardrails are applied in code to the writer's output (postprocess). The LLM never gets a tool
@@ -216,7 +217,10 @@ async def read_screen(s: Settings, ctx: Ctx, frame: bytes) -> Reading | None:
     """-> the reader's view of one frame, or None (no LLM, or no valid JSON twice)."""
     image = "data:image/jpeg;base64," + base64.b64encode(frame).decode()
     msgs: list[Row] = [
-        {"role": "system", "content": read("screen_reader")},
+        {
+            "role": "system",
+            "content": read("screen_reader").replace("{max_fields}", str(READ_FIELDS)),
+        },
         {
             "role": "user",
             "content": [
@@ -228,7 +232,9 @@ async def read_screen(s: Settings, ctx: Ctx, frame: bytes) -> Reading | None:
     fmt = reader_schema()
     for attempt in range(2):
         try:
-            raw, _ = await _json_call(s, ctx, msgs, "screen_frame", fmt, max_tokens=700)
+            raw, _ = await _json_call(
+                s, ctx, msgs, "screen_frame", fmt, 700, prefer=s.screen_reader_primary
+            )
         except LLMUnavailable as e:
             log.warning("screen read: no LLM (%s)", str(e)[:200])  # provider + status only
             if fmt["type"] == "json_object":

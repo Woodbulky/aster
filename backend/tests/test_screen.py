@@ -354,6 +354,22 @@ def test_the_writer_replies_in_marathi_when_lang_is_mr(monkeypatch: pytest.Monke
     assert asyncio.run(screen.write(None, Ctx, r, FIELDS, None, "")) == (None, None)  # type: ignore[arg-type]
 
 
+def test_the_reader_goes_to_the_configured_provider_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import Settings
+
+    reply = json.dumps(
+        {"page_kind": "form", "fields": ["Gender|radio|0|Male/Female"], "buttons": []}
+    )
+    calls = fake_llm(monkeypatch, [reply, reply])
+    r = asyncio.run(screen.read_screen(Settings(), Ctx, b"jpeg"))  # type: ignore[arg-type]
+    assert r and r.fields[0].options == ["Male", "Female"]
+    assert calls[0]["prefer"] == "fallback" and calls[0]["sensitive_kind"] == "screen_frame"
+    assert calls[0]["response_format"]["type"] == "json_schema"
+    gpu = Settings(screen_reader_primary="gpu")
+    asyncio.run(screen.read_screen(gpu, Ctx, b"jpeg"))  # type: ignore[arg-type]
+    assert calls[1]["prefer"] == "gpu"
+
+
 def test_a_writer_call_prefers_groq_and_is_audited(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
 
