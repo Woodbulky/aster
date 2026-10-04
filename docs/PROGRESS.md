@@ -547,3 +547,28 @@ User decision: a wrong document in a slot is blocked with a gentle "might not be
 - Not run on real EWS / edited / AI-generated files yet (fixtures are synthetic). Title phrases are a starting list: add real wording as it is seen.
 - QR verification of certificates and DigiLocker as a trusted source remain future work (a QR decoder is a new dependency: ask first).
 - `/guardrails` on the whole diff: 1 fix. The shared research cache could carry items quoted from a link one student pasted to every later student (guardrail 8). `0009_fetched_content_via` records how a page was found (`search` | `link`); only `search` items are shared, and their text goes through `redact_ids`. Types regenerated; advisors unchanged. pytest 391.
+
+## 2026-10-05 · Smoother, faster UX (user-approved plan, 3 tiers)
+User decisions: keep `get_user` for JWT checks (no local verification); all three tiers.
+
+**What changed**
+- **Wake-up:** `wakeBackend()` pings `/health` once per page load from the landing page, `/login` and the app shell, so a sleeping Render wakes while the user signs in. An external keep-warm pinger is still advised for the demo (ARCHITECTURE).
+- **Chat opens in parallel:** the history loads side by side with the socket (live greeting deltas go after it). The WS hello reads the session, assistant and greeting check in one `gather`.
+- **Flag answers:** `read_answers` prefers `BRAIN_PRIMARY` (Groq). Its values are already in the conversation's state (`flag_summary`); a Groq call is still audited (`flag_answer`). This removes ~3–5 s of GPU time before every reply in documents/verification/ready.
+- **Mic:** `preloadVad()` warms the Silero v5 model, worklet and `ort-wasm-simd-threaded` (~15 MB) 1.5 s after a voice page mounts (skipped on data-saver).
+- **Language toggle:** new client message `set_lang` (API.md). The toggle no longer reconnects the socket.
+- **Documents:** cards show as each document finishes; the spoken summary waits until no other document in the session is still being read (one stuck > 3 min is ignored), then covers the whole batch. Ceiling: per connection.
+- **Turns:** `agent_state thinking` is sent first. The user's message is written while the phase syncs.
+- **UI:** optimistic thinking on send (an `error` resets it). Autoscroll follows only a reader near the bottom (or one who just sent). It jumps for streaming tokens and long distances; a long smooth scroll was cut short on reload (seen live: a reloaded chat stopped mid-history). "Continue to documents" disables after one tap.
+
+**How verified**
+- pytest **395 passed**: flag answers prefer brain_primary and stay audited; `set_lang` then `user_text` → Hindi reply on the same socket; a two-document batch gives two cards and one summary, and a stuck document is not waited for; thinking is the first message of a turn. ruff clean. Web: lint, typecheck, 6 node tests, build.
+- Chrome (local, session `0b5b6356…`):
+  - the VAD assets are fetched on idle;
+  - Hindi toggle with no "Connecting…" → reply stored `lang=hi`; English toggle → English reply on the same socket;
+  - a reload lands at the bottom (gap 32 px; before: stuck mid-history);
+  - thinking shows at once on send.
+
+**Open issues**
+- Not measured: cold-start time saved on Render, the 3-document upload (one summary) in the browser, and `llm_first_token_ms` for a flag answer on the GPU vs Groq.
+- Cards that grow after the jump on reload (signed-URL images) can leave a small gap until the next item.

@@ -64,15 +64,20 @@ export default function ChatSessionPage() {
   const [input, setInput] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true); // the reader scrolled up: leave them there
+  const lastTop = useRef(0);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const last = items.at(-1);
     const mine = last?.kind === "msg" && last.role === "user";
     if (!nearBottom.current && !mine) return;
-    // Streaming tokens jump (a smooth scroll per token jitters); new items glide.
+    // Streaming tokens and long distances (a reloaded history) jump: a smooth scroll per token
+    // jitters, and a long one is cut short when cards lay out. A new item nearby glides.
+    const el = scroller.current;
+    const far = !!el && el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight;
     const streaming = last?.kind === "msg" && last.streaming;
-    end.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth", block: "end" });
-  }, [items, agent.detail]);
+    end.current?.scrollIntoView({ behavior: streaming || far ? "auto" : "smooth", block: "end" });
+  }, [items, agent.state, agent.detail]); // the "thinking…" line counts too
 
   const busy = agent.state === "thinking";
   const canSend = status === "open" && !busy;
@@ -123,9 +128,14 @@ export default function ChatSessionPage() {
         {/* Messages / welcome */}
         {/* relative: keeps the cards' sr-only (absolute) inputs inside this scroller, not the page */}
         <div
+          ref={scroller}
           onScroll={(e) => {
+            // Only scrolling up leaves the bottom: our own smooth scroll passes far-from-bottom
+            // positions on its way down.
             const el = e.currentTarget;
-            nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            if (near || el.scrollTop < lastTop.current) nearBottom.current = near;
+            lastTop.current = el.scrollTop;
           }}
           className="relative min-h-0 flex-1 overflow-y-auto"
         >
