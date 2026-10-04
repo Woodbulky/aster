@@ -556,13 +556,13 @@ User decisions: keep `get_user` for JWT checks (no local verification); all thre
 - **Chat opens in parallel:** the history loads side by side with the socket (live greeting deltas go after it). The WS hello reads the session, assistant and greeting check in one `gather`.
 - **Flag answers:** `read_answers` prefers `BRAIN_PRIMARY` (Groq). Its values are already in the conversation's state (`flag_summary`); a Groq call is still audited (`flag_answer`). This removes ~3–5 s of GPU time before every reply in documents/verification/ready.
 - **Mic:** `preloadVad()` warms the Silero v5 model, worklet and `ort-wasm-simd-threaded` (~15 MB) 1.5 s after a voice page mounts (skipped on data-saver).
-- **Language toggle:** new client message `set_lang` (API.md). The toggle no longer reconnects the socket.
+- **Language toggle:** new client message `set_lang` (API.md). The toggle no longer reconnects the socket. It applies after a running turn, so a reply is never stored or spoken under the wrong language (`/guardrails` fix, guardrail 9).
 - **Documents:** cards show as each document finishes; the spoken summary waits until no other document in the session is still being read (one stuck > 3 min is ignored), then covers the whole batch. Ceiling: per connection.
 - **Turns:** `agent_state thinking` is sent first. The user's message is written while the phase syncs.
 - **UI:** optimistic thinking on send (an `error` resets it). Autoscroll follows only a reader near the bottom (or one who just sent). It jumps for streaming tokens and long distances; a long smooth scroll was cut short on reload (seen live: a reloaded chat stopped mid-history). "Continue to documents" disables after one tap.
 
 **How verified**
-- pytest **395 passed**: flag answers prefer brain_primary and stay audited; `set_lang` then `user_text` → Hindi reply on the same socket; a two-document batch gives two cards and one summary, and a stuck document is not waited for; thinking is the first message of a turn. ruff clean. Web: lint, typecheck, 6 node tests, build.
+- pytest **396 passed**: flag answers prefer brain_primary and stay audited; `set_lang` then `user_text` → Hindi reply on the same socket; a two-document batch gives two cards and one summary, and a stuck document is not waited for; thinking is the first message of a turn. ruff clean. Web: lint, typecheck, 6 node tests, build.
 - Chrome (local, session `0b5b6356…`):
   - the VAD assets are fetched on idle;
   - Hindi toggle with no "Connecting…" → reply stored `lang=hi`; English toggle → English reply on the same socket;

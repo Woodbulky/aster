@@ -361,7 +361,12 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                     if current and not current.done():
                         current.cancel()  # run() tells the client the agent is idle
                 case SetLang(lang=lang):
-                    ctx.lang = lang  # at once, not queued: the next reply and its voice use it
+                    # After the running turn (if any): a reply written in one language must not be
+                    # stored or spoken as another (guardrail 9). No reconnect either way.
+                    async def switch(lang=lang) -> None:
+                        ctx.lang = lang
+
+                    start(switch, preempt=False)
                 case UserText(text=text):
                     start(lambda text=text: text_turn(user_text=text), preempt=True)
                 case UiEvent(name="form_selected", payload=payload):

@@ -130,6 +130,31 @@ def test_set_lang_switches_replies_on_the_open_socket(client, store: FakeStore, 
         assert "Hindi" in llm.calls[-1]["messages"][0]["content"]
 
 
+def test_set_lang_mid_turn_waits_for_that_reply(
+    client, store: FakeStore, sid: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guardrail 9: a reply written in Marathi is stored as Marathi even if the toggle moved."""
+    import asyncio
+
+    from app.agent import orchestrator
+    from app.llm.client import Chunk
+
+    c, _ = client
+
+    async def slow(_s, _msgs, **_kw):
+        await asyncio.sleep(0.3)
+        yield Chunk("fallback", {"content": "नमस्कार!"})
+
+    monkeypatch.setattr(orchestrator, "chat_stream", slow)
+    with c.websocket_connect(f"/ws/session/{sid}") as ws:
+        ws.send_json(HELLO)  # the greeting turn starts, in Marathi
+        ws.send_json({"type": "set_lang", "lang": "hi"})
+        assert until(ws, "assistant_message")[-1]["lang"] == "mr"
+        ws.send_json({"type": "user_text", "text": "hello"})
+        assert until(ws, "assistant_message")[-1]["lang"] == "hi"
+    assert [m["lang"] for m in store.messages if m["role"] == "assistant"] == ["mr", "hi"]
+
+
 def test_a_batch_of_documents_gets_one_spoken_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     """Cards at once for each document; the spoken summary waits for the last one of the batch."""
     import asyncio
