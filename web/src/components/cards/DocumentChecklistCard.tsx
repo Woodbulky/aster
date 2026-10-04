@@ -3,7 +3,7 @@
 import { CheckCircle2, ExternalLink, FileUp, LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, ensureConsent } from "@/lib/api";
 import { BLUR_MIN, blurScore } from "@/lib/blur";
 import { ACCEPT } from "@/lib/general-docs";
 import { sessionDocStatus, uploadSessionDoc, waitForDocument } from "@/lib/documents";
@@ -43,11 +43,14 @@ export function DocumentChecklistCard({ payload }: { payload: DocumentChecklistP
   useEffect(() => {
     // The card is a snapshot from when it was shown: refresh from the database.
     sessionDocStatus(payload.session_id)
-      .then((docs) => {
+      .then(async (docs) => {
         setStatus((s) => ({ ...s, ...Object.fromEntries(Object.entries(docs).map(([t, d]) => [t, d.status])) }));
-        // Anything already saved in the profile vault is reused instead of asked for again.
-        for (const item of payload.items) {
-          if (docs[item.doc_type] || reused.has(`${payload.session_id}:${item.doc_type}`)) continue;
+        // Anything already given (profile vault, or read in another application) is reused
+        // instead of asked for again. The backend reads it only with document consent: ask once
+        // here, or every reuse is a silent 403 (seen live: vault saved before consent existed).
+        const todo = payload.items.filter((i) => !docs[i.doc_type] && !reused.has(`${payload.session_id}:${i.doc_type}`));
+        if (!todo.length || !(await ensureConsent("documents"))) return;
+        for (const item of todo) {
           reused.add(`${payload.session_id}:${item.doc_type}`);
           api<{ document_id?: string }>("POST", `/api/sessions/${payload.session_id}/documents/from-vault`, { doc_type: item.doc_type })
             .then((r) => {

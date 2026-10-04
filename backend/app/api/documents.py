@@ -2,11 +2,13 @@
 (storage RLS: own folder only), then calls this; all table writes stay on the backend."""
 
 import json
+import re
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from storage3.exceptions import StorageApiError
 
 from app.api.me import require_consent
 from app.audit import fetch as fetch_audit
@@ -21,6 +23,7 @@ from app.verify.pipeline import process_document
 router = APIRouter(prefix="/api/sessions/{session_id}")
 
 EXT = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+MIME = {v: k for k, v in EXT.items()}
 
 
 class DocumentIn(BaseModel):
@@ -93,8 +96,9 @@ def add_from_vault(
     user_id: UserId,
     s: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
-    """Reuses the file the user saved in their profile vault (<uid>/general/<type>/): copies it
-    into this session and starts the pipeline, so nothing is asked twice. 404 if none saved."""
+    """Reuses a file the user already gave: the one saved in their profile vault
+    (<uid>/general/<type>/), else the newest one read in another of their applications. Copies it
+    into this session and starts the pipeline, so nothing is asked twice. 404 if none."""
     _session(db, user_id, session_id)
     require_consent(db, user_id, "documents")
     sid, t = str(session_id), body.doc_type
@@ -102,17 +106,29 @@ def add_from_vault(
         return {"status": "exists"}
     bucket = db.storage.from_(repo.BUCKET)
     folder = f"{user_id}/general/{t}"
-    files = [f for f in bucket.list(folder) if f.get("id")]
-    if not files:
+    if files := [f for f in bucket.list(folder) if f.get("id")]:
+        latest = max(files, key=lambda f: f.get("created_at") or "")
+        ext = latest["name"].rsplit(".", 1)[-1].lower()
+        src, mime = f"{folder}/{latest['name']}", MIME.get("jpg" if ext == "jpeg" else ext)
+    elif prev := repo.latest_read_document(db, user_id, t, sid):
+        src, mime = prev["storage_path"], prev["mime"]  # read again: flags are per application
+    else:
         raise HTTPException(404, "nothing saved for this document")
-    latest = max(files, key=lambda f: f.get("created_at") or "")
-    ext = latest["name"].rsplit(".", 1)[-1].lower()
-    mime = {v: k for k, v in EXT.items()}.get("jpg" if ext == "jpeg" else ext)
-    if not mime:
+    if mime not in EXT:
         raise HTTPException(400, "unsupported file type")
     doc_id = str(uuid4())
     path = f"{user_id}/{sid}/{doc_id}.{EXT[mime]}"
-    bucket.copy(f"{folder}/{latest['name']}", path)
+    try:
+        bucket.copy(src, path)
+    except StorageApiError:
+        # The original held a full ID number and was deleted after reading (guardrail 6). Copy
+        # its masked pages: the pipeline reads <doc>/pN.png when the original is missing.
+        old, new = src.rsplit(".", 1)[0], path.rsplit(".", 1)[0]
+        pages = [f["name"] for f in bucket.list(old) if re.fullmatch(r"p\d+\.png", f["name"])]
+        if not pages:
+            raise HTTPException(404, "nothing saved for this document") from None
+        for n in pages:
+            bucket.copy(f"{old}/{n}", f"{new}/{n}")
     repo.add_document(
         db, user_id, sid, {"id": doc_id, "doc_type": t, "storage_path": path, "mime": mime}
     )

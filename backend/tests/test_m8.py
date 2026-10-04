@@ -255,3 +255,59 @@ def test_one_proposal_per_flag(props) -> None:
     assert propose_profile_update(None, "u1", flag()) is not None
     assert propose_profile_update(None, "u1", flag()) is None  # flag_resolved sent twice
     assert len(props.proposals) == 1
+
+
+def test_vault_falls_back_to_a_document_read_in_another_application(m8, monkeypatch) -> None:
+    c, st = m8
+    st.consent = {"granted": True}
+    copies: list[tuple[str, str]] = []
+    bucket = SimpleNamespace(list=lambda _f: [], copy=lambda a, b: copies.append((a, b)))
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        auth=SimpleNamespace(get_user=get_user), storage=SimpleNamespace(from_=lambda _b: bucket)
+    )
+    monkeypatch.setattr("app.api.documents.process_document", lambda *a: None)
+    monkeypatch.setattr(repo, "list_documents", lambda *a, **kw: [])
+    monkeypatch.setattr(repo, "add_document", lambda *a: {"id": "d"})
+    prev = {"storage_path": "u1/old/x.pdf", "mime": "application/pdf"}
+    monkeypatch.setattr(repo, "latest_read_document", lambda _db, u, t, s: prev)
+    path = "/api/sessions/00000000-0000-0000-0000-000000000002/documents/from-vault"
+    r = c.post(path, json={"doc_type": "aadhaar"}, headers=AUTH)
+    assert r.status_code == 202 and copies[0][0] == "u1/old/x.pdf"
+    assert copies[0][1].startswith("u1/00000000-0000-0000-0000-000000000002/")
+    monkeypatch.setattr(repo, "latest_read_document", lambda *a: None)
+    assert c.post(path, json={"doc_type": "aadhaar"}, headers=AUTH).status_code == 404
+
+
+def test_vault_reuses_the_masked_pages_of_a_deleted_id_original(m8, monkeypatch) -> None:
+    # seen live: the Aadhaar original is deleted after reading (guardrail 6); copying it failed
+    from storage3.exceptions import StorageApiError
+
+    c, st = m8
+    st.consent = {"granted": True}
+    copies: list[tuple[str, str]] = []
+
+    def copy(a: str, b: str) -> None:
+        if a.endswith(".pdf"):
+            raise StorageApiError("not found", "NoSuchKey", 404)
+        copies.append((a, b))
+
+    def ls(folder: str) -> list[dict]:
+        return [{"name": "p1.png"}, {"name": "p2.png"}] if folder == "u1/old/x" else []
+
+    bucket = SimpleNamespace(list=ls, copy=copy)
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        auth=SimpleNamespace(get_user=get_user), storage=SimpleNamespace(from_=lambda _b: bucket)
+    )
+    monkeypatch.setattr("app.api.documents.process_document", lambda *a: None)
+    monkeypatch.setattr(repo, "list_documents", lambda *a, **kw: [])
+    monkeypatch.setattr(repo, "add_document", lambda *a: {"id": "d"})
+    prev = {"storage_path": "u1/old/x.pdf", "mime": "application/pdf"}
+    monkeypatch.setattr(repo, "latest_read_document", lambda *a: prev)
+    path = "/api/sessions/00000000-0000-0000-0000-000000000002/documents/from-vault"
+    r = c.post(path, json={"doc_type": "aadhaar"}, headers=AUTH)
+    new = r.json()["document_id"]
+    assert r.status_code == 202
+    assert [b for _, b in copies] == [
+        f"u1/00000000-0000-0000-0000-000000000002/{new}/p1.png",
+        f"u1/00000000-0000-0000-0000-000000000002/{new}/p2.png",
+    ]

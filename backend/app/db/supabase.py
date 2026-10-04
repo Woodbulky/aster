@@ -221,6 +221,19 @@ def update_document(db: Client, user_id: str, document_id: str, values: Row) -> 
     db.table("documents").update(values).eq("id", document_id).eq("user_id", user_id).execute()
 
 
+def latest_read_document(db: Client, user_id: str, doc_type: str, not_session: str) -> Row | None:
+    """The newest document of this type read in another of the user's applications."""
+    q = (
+        db.table("documents")
+        .select("storage_path,mime")
+        .eq("user_id", user_id)
+        .eq("doc_type", doc_type)
+        .eq("status", "extracted")
+        .neq("session_id", not_session)
+    )
+    return _one(q.order("created_at", desc=True).limit(1).execute().data)
+
+
 def list_documents(db: Client, user_id: str, session_id: str, full: bool = False) -> list[Row]:
     """Oldest first. full=True adds the OCR json (pages + lines)."""
     cols = "id,doc_type,status,error,created_at,page_count" + (",ocr" if full else "")
