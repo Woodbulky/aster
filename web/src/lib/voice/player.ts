@@ -10,6 +10,8 @@ type Item = { messageId: string; audio?: Promise<AudioBuffer | null>; text?: str
  * `level` (0..1) follows the output amplitude for the avatar. `stop()` is the barge-in. */
 export class Player {
   readonly level = motionValue(0);
+  /** Chat mode: replies are read, not played. */
+  muted = false;
   private onSpeaking: (speaking: boolean) => void = () => {};
   /** Called when the first sentence of a message starts playing (latency overlay). */
   private onFirstAudio: (messageId: string) => void = () => {};
@@ -45,14 +47,14 @@ export class Player {
   }
 
   enqueueAudio(messageId: string, data: ArrayBuffer) {
-    if (this.stopped.has(messageId)) return;
+    if (this.muted || this.stopped.has(messageId)) return;
     this.unlock();
     const audio = this.ctx!.decodeAudioData(data).catch(() => null);
     this.push({ messageId, audio });
   }
 
   enqueueText(messageId: string, text: string, lang: Lang) {
-    if (this.stopped.has(messageId)) return;
+    if (this.muted || this.stopped.has(messageId)) return;
     this.push({ messageId, text, lang });
   }
 

@@ -77,7 +77,7 @@ NOT_A_NAME = (
 NOT_A_NAME_SCORE = 75
 FUZZY = 0.5  # type-check factor for a text value found only approximately (OCR noise)
 FUZZY_MIN = 90
-_DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
 _IFSC = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
 _HONORIFIC = re.compile(r"^(?:shri|shree|smt|kumari|kum|ku|mr|mrs|ms|miss)\.?\s+", re.IGNORECASE)
 _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -89,7 +89,7 @@ _DATE_IN_TEXT = re.compile(
 
 def norm(s: str) -> str:
     """NFKC, Devanagari digits -> ASCII, casefold, punctuation (except / - .) -> space, collapse."""
-    s = unicodedata.normalize("NFKC", s).translate(_DEV_DIGITS).casefold()
+    s = unicodedata.normalize("NFKC", s).translate(DEV_DIGITS).casefold()
     s = re.sub(r"[^\w\s/.\-ऀ-ॿ]", " ", s)  # keep Devanagari vowel signs (not \w)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -106,7 +106,7 @@ def parse_date(s: str) -> date | None:
 
 def numbers(s: str) -> list[float]:
     """Indian grouping kept: "Rs. 1,48,000/-" -> [148000.0]."""
-    digits = unicodedata.normalize("NFKC", s).translate(_DEV_DIGITS)
+    digits = unicodedata.normalize("NFKC", s).translate(DEV_DIGITS)
     return [float(m.replace(",", "")) for m in _NUM.findall(digits)]
 
 
@@ -179,7 +179,7 @@ def check(
             factor = FUZZY
         value = re.sub(r"\s+", " ", value_text)
         if kind == "fy":
-            fy = re.fullmatch(r"(\d{4})\s*[-/–]\s*(\d{2,4})", value.translate(_DEV_DIGITS))
+            fy = re.fullmatch(r"(\d{4})\s*[-/–]\s*(\d{2,4})", value.translate(DEV_DIGITS))
             if not fy:
                 return Checked(False, reason="not a financial year")
             value = f"{fy[1]}-{fy[2][-2:]}"

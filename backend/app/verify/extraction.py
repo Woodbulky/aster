@@ -50,7 +50,8 @@ DOC_LABELS = {
 
 
 def field_label(key: str) -> str:
-    return key.replace("_", " ").replace("ssc", "10th").replace("hsc", "12th").capitalize()
+    words = key.replace("dob", "date_of_birth").replace("_", " ")
+    return words.replace("ssc", "10th").replace("hsc", "12th").capitalize()
 
 
 HINTS = {

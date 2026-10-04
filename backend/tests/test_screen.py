@@ -275,6 +275,73 @@ def test_recent_talk_is_text_only_and_short() -> None:
     assert talk[1].startswith("Aster: Okay. x") and len(talk[1]) == 207 and len(talk) == 2
 
 
+# ---------- "verify the other fields": compared in code, typed values never repeated ----------
+@pytest.mark.parametrize(
+    "ask",
+    [
+        "i will do it just verify if other feilds are correct",
+        "is everything right?",
+        "सब सही है?",
+        "बरोबर आहे का?",
+    ],
+)
+def test_a_check_request_is_recognised(ask) -> None:
+    assert screen.VERIFY.search(ask)
+
+
+def test_what_is_typed_is_checked_against_the_checked_values() -> None:
+    boxes = [
+        "Applicant Full Name (as per Aadhaar)|full_name|Aarav Sunil Patil",
+        "Date of Birth|dob|12/05/2006",  # a wrong year
+        "Annual Family Income|annual_family_income|१४८०००",  # Devanagari digits are the same number
+        "Aadhaar Number|aadhaar_last4|1234 5678 4417",  # the model failed to blank it
+        "Password||hunter2",
+        "Father's occupation||Farmer",  # no checked value
+        "no pipes at all",
+    ]
+    said = screen.verdict(boxes, FIELDS, "en")
+    assert said.startswith(
+        "Date of Birth doesn't look right — it should be 12/05/2005. Please check it."
+    )
+    assert (
+        "match your checked values: Applicant Full Name (as per Aadhaar), Annual Family Income."
+        in said
+    )
+    assert "no checked value for Father's occupation, no pipes at all" in said
+    assert "Aadhaar Number: check this yourself" in said
+    for typed in ("2006", "1234", "hunter2", "Password", "Farmer"):
+        assert typed not in said
+    assert screen.verdict([], FIELDS, "mr").startswith("या स्क्रीनवर अजून")
+
+
+def test_a_box_whose_label_scrolled_off_is_placed_by_its_value() -> None:
+    # seen live: "I have no checked value for Kasliwal Harsh Padam" (the name was the label)
+    boxes = [
+        "Aarav Sunil Patil||",
+        "12/05/2005|dob|12/05/2005",
+        "?|gender|Male",
+        "?||Open",
+        "9876 5432 1098||",  # an Aadhaar number given as a label
+        "?||Pune",  # nothing to compare with
+    ]
+    said = screen.verdict(boxes, FIELDS, "en")
+    assert said.startswith(
+        "On this screen these match your checked values: Full name, Dob, Gender, Category. "
+        "I couldn't see the name of 2 box(es)"
+    )
+    assert "9876" not in said and "Pune" not in said
+    assert screen.verdict(["?|dob|12/05/2006"], FIELDS, "en").startswith("Dob doesn't look right")
+
+
+def test_an_identifier_box_is_said_once_then_guidance_moves_on() -> None:
+    r = rd("form", ["Aadhaar Number *", "Gender"])
+    note = "Aadhaar Number *: please type the number yourself from your Aadhaar card."
+    assert [f.appears_filled for f in screen.skip_told(r, [], "en").fields] == [False, False]
+    said = [{"role": "assistant", "content": note}, {"role": "user", "content": "later"}]
+    assert [f.appears_filled for f in screen.skip_told(r, said, "en").fields] == [True, False]
+    assert not r.fields[0].appears_filled  # the reading itself (shown to the user) is unchanged
+
+
 def test_the_reader_schema_caps_fields_on_one_line() -> None:
     schema = screen.reader_schema()["json_schema"]["schema"]
     assert schema["properties"]["fields"]["maxItems"] == screen.READ_FIELDS == 8

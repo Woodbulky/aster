@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Laptop, Lock, LockOpen, Mic, MicOff, MonitorUp, PictureInPicture2, ShieldCheck, Square } from "lucide-react";
+import { ArrowUp, ExternalLink, Keyboard, Laptop, Lock, LockOpen, Mic, MonitorUp, PictureInPicture2, ShieldCheck, Square } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -25,7 +25,7 @@ declare global {
 
 /** A floating window above the portal tab, with this page's styles copied in (a one-time copy). */
 async function openPipWindow(): Promise<Window> {
-  const w = await window.documentPictureInPicture!.requestWindow({ width: 380, height: 340 });
+  const w = await window.documentPictureInPicture!.requestWindow({ width: 380, height: 400 });
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       const style = w.document.createElement("style");
@@ -52,7 +52,7 @@ export default function FillPage() {
   const assistant = useAssistant();
   const lang = (LANGS.some((l) => l.id === assistant.language) ? assistant.language : "en") as Lang;
   const sock = useSessionSocket(sessionId, lang);
-  const { phase, agent, status, error, player, guidance, paused, resume, sendUi, sendAudio, sendFrame, interrupt } = sock;
+  const { items, phase, agent, status, error, player, guidance, paused, resume, sendText, sendUi, sendAudio, sendFrame, interrupt } = sock;
 
   // Android Chrome has no getDisplayMedia (FORM_FILL.md). Server render assumes support.
   const supported = useSyncExternalStore(noop, () => !!navigator.mediaDevices?.getDisplayMedia, () => true);
@@ -63,6 +63,8 @@ export default function FillPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pip, setPip] = useState<Window | null>(null);
   const [pipError, setPipError] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const log = useRef<HTMLOListElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const scratch = useRef<HTMLCanvasElement | null>(null);
   const lastSent = useRef<{ hash: string; at: number } | null>(null);
@@ -105,6 +107,33 @@ export default function FillPage() {
     [stream, capture, sendAudio],
   );
   const voice = useVoice({ player, sendAudio: sendAudioWithFrame, interrupt });
+
+  /** Typed questions go with the current page too: a changed page is sent (and awaited) first. */
+  async function send(text: string) {
+    const t = text.trim();
+    if (!t || status !== "open") return;
+    setInput("");
+    const v = video.current;
+    if (stream && v?.videoWidth) {
+      scratch.current ??= document.createElement("canvas");
+      const last = lastSent.current;
+      if (!last || hamming(hashVideo(v, scratch.current), last.hash) > CHANGED) await capture("change");
+    }
+    sendText(t);
+  }
+
+  // Talk = the mic is on and Aster speaks; Chat = mic off, replies are only shown. The switch IS the
+  // mic, so the two can't disagree (a denied mic stays in Chat). Chat until a tap: browsers need one.
+  const mode = voice.handsFree ? "talk" : "chat";
+  player.muted = mode === "chat";
+  useEffect(() => {
+    if (mode === "chat") player.stop();
+  }, [mode, player]);
+  const setMode = (m: "talk" | "chat") => m !== mode && void voice.toggleHandsFree();
+
+  useEffect(() => {
+    if (log.current) log.current.scrollTop = log.current.scrollHeight;
+  }, [items]);
 
   // Frame policy: check every 1.5 s, send when the screen changed (dHash > 10), at most 1 per 3 s.
   // While paused (login/OTP/submit) nothing is sent; a clearly different page resumes guidance.
@@ -217,8 +246,50 @@ export default function FillPage() {
     </button>
   );
 
+  const modeToggle = (
+    <div role="group" aria-label="Talk or chat" className="flex rounded-xl border border-border bg-card p-1">
+      {(["talk", "chat"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={mode === m}
+          onClick={() => setMode(m)}
+          className={cn(
+            "flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors",
+            mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {m === "talk" ? <Mic className="size-4" /> : <Keyboard className="size-4" />} {m === "talk" ? "Talk" : "Chat"}
+        </button>
+      ))}
+    </div>
+  );
+
+  const composer = (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send(input);
+      }}
+      className="flex items-center gap-2"
+    >
+      <input
+        aria-label={`Message ${assistant.assistant_name}`}
+        placeholder="Ask about this page… (English, हिंदी or मराठी)"
+        value={input}
+        maxLength={2000}
+        onChange={(e) => setInput(e.target.value)}
+        className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+      />
+      <button type="submit" disabled={!input.trim() || status !== "open"} aria-label="Send" className="btn-primary size-10 shrink-0 rounded-xl p-0">
+        <ArrowUp className="size-4" />
+      </button>
+    </form>
+  );
+
   /** The guidance panel: in this page, or in the floating PiP window (same handlers, React portal). */
   const panel = (compact: boolean) => (
+    <>
     <GuidePanel
       compact={compact}
       name={assistant.assistant_name}
@@ -239,17 +310,11 @@ export default function FillPage() {
         void capture("manual", true);
       }}
     >
-      <button
-        type="button"
-        aria-pressed={voice.handsFree}
-        aria-label={voice.handsFree ? "Turn the mic off" : "Talk hands-free"}
-        onClick={() => void voice.toggleHandsFree()}
-        className={cn("size-10 rounded-xl p-0", voice.handsFree ? "btn-primary" : "btn-ghost")}
-      >
-        {voice.handsFree ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-      </button>
+      {compact && modeToggle}
       {compact && privateButton}
     </GuidePanel>
+    {compact && mode === "chat" && <div className="px-3 pb-3">{composer}</div>}
+    </>
   );
 
   return (
@@ -262,7 +327,10 @@ export default function FillPage() {
             {status !== "open" ? "Connecting…" : stream ? (privateMode ? "Private mode — not looking" : paused ? "Paused" : "Watching the shared tab") : "Not sharing"}
           </small>
         </div>
-        <div className="ml-auto flex items-center gap-2">{stream && privateButton}</div>
+        <div className="ml-auto flex items-center gap-2">
+          {modeToggle}
+          {stream && privateButton}
+        </div>
       </div>
 
       <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-8 lg:grid-cols-[1fr_340px]">
@@ -347,6 +415,35 @@ export default function FillPage() {
                 </section>
               )}
             </>
+          )}
+          {supported && !notReady && (
+            <section aria-label="Conversation" className="card flex flex-col gap-3 p-4 text-sm">
+              <ol ref={log} role="log" aria-live="polite" className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+                {items.flatMap((it) =>
+                  it.kind === "msg"
+                    ? [
+                        <li
+                          key={it.id}
+                          lang={it.lang}
+                          className={cn(
+                            "max-w-[85%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap",
+                            it.role === "user" ? "ml-auto bg-primary text-primary-foreground" : "border border-border bg-card",
+                          )}
+                        >
+                          {it.text}
+                        </li>,
+                      ]
+                    : [],
+                )}
+              </ol>
+              {mode === "chat" ? (
+                composer
+              ) : (
+                <p className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+                  <Mic className="size-4 text-primary" /> {voice.listening ? "Listening…" : "Just talk — I'm listening. Switch to Chat to type instead."}
+                </p>
+              )}
+            </section>
           )}
           {/* The shared tab, never shown or stored: frames are grabbed from it in memory. */}
           <video ref={video} muted playsInline aria-hidden className="pointer-events-none fixed top-0 left-0 size-px opacity-0" />

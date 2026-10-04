@@ -30,7 +30,7 @@ from app.llm.client import LLMUnavailable, Provider, chat_stream
 from app.speech.stream import Speaker
 from app.verify.checks import readiness
 from app.verify.contradictions import same
-from app.verify.validator import KIND, numbers, parse_date
+from app.verify.validator import DEV_DIGITS, KIND, numbers, parse_date
 from app.ws.protocol import AgentState, AssistantMessage, Guidance, GuideField, PauseGuidance
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ LANG_NAMES = {"mr": "Marathi", "hi": "Hindi", "en": "English"}
 FRAMES_KEPT = 3
 FRESH_S = 10.0  # a frame this recent belongs to the user's question
 READ_FIELDS = 8
+CHECK_FIELDS = 20
 
 
 class Frames:
@@ -261,6 +262,7 @@ class Reader:
         self._read_fn = read_fn
         self.frame_id: str | None = None
         self.reading: Reading | None = None
+        self.frame: bytes | None = None  # the page that reading is of (a check looks at it again)
         self.fields: list[Row] | None = None  # the checked values, loaded with a read
         self._task: asyncio.Task | None = None
         self._next: tuple[str, bytes] | None = None
@@ -286,7 +288,7 @@ class Reader:
             except Exception:
                 log.exception("screen read crashed")
                 self.reading = None
-            self.frame_id = frame_id
+            self.frame_id, self.frame = frame_id, frame
             if self._next is None:
                 return
             (frame_id, frame), self._next = self._next, None
@@ -301,6 +303,116 @@ class Reader:
     def close(self) -> None:
         if self._task:
             self._task.cancel()
+        self.frame = None
+
+
+# ---------- CHECK: what is typed on the page vs the checked values ----------
+# "verify if other fields are correct", "सब सही है?", "बरोबर आहे का?"
+# ponytail: keywords, so "what's the correct option?" also runs a check; let the writer decide
+# if that bites.
+VERIFY = re.compile(
+    r"verif|\bcheck|correct|\bright\b|wrong|mistake|सही|ठीक|बरोबर|चूक|गलत|तपास|जाँच|जांच|चेक",
+    re.I,
+)
+
+
+_LONG_DIGITS = re.compile(r"\d[\d\s-]{3,}\d")  # a label never holds a number like this; a value may
+
+
+async def check_screen(s: Settings, ctx: Ctx, frame: bytes, fields: list[Row]) -> list[str] | None:
+    """-> "label|field_key|typed" per filled box, or None. The model gets the field keys and labels
+    only, never the checked values: it must copy what is typed, not what we expect."""
+    keys = [{"field_key": f["field_key"], "label": f["label"]} for f in _model_fields(fields)]
+    image = "data:image/jpeg;base64," + base64.b64encode(frame).decode()
+    prompt = read("screen_checker").replace("{max_fields}", str(CHECK_FIELDS))
+    msgs: list[Row] = [
+        {"role": "system", "content": prompt.replace("{fields}", json.dumps(keys))},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Read the filled boxes."},
+                {"type": "image_url", "image_url": {"url": image}},
+            ],
+        },
+    ]
+    for _ in range(2):
+        try:
+            raw, _ = await _json_call(
+                s, ctx, msgs, "screen_frame", {"type": "json_object"}, 900,
+                prefer=s.screen_reader_primary,
+            )  # fmt: skip
+            boxes = json.loads(raw).get("boxes")
+            if isinstance(boxes, list):
+                return [str(b) for b in boxes[:CHECK_FIELDS]]
+        except LLMUnavailable as e:
+            log.warning("screen check: no LLM (%s)", str(e)[:200])
+            return None
+        except (ValueError, AttributeError) as e:  # the type only: it describes the screen
+            log.warning("screen check invalid: %s", type(e).__name__)
+    return None
+
+
+def verdict(boxes: list[str], fields: list[Row], lang: str) -> str:
+    """The boxes the checker read -> what matches, what does not, what the student checks
+    themselves. Compared in code (same()), never by a model. What is typed is never repeated (it
+    may be an identifier the model failed to blank); only labels and the checked values are."""
+    by_key = {f["field_key"]: f for f in fields if f["field_key"] not in IDENTIFIER_KEYS}
+
+    def by_value(v: str) -> Row | None:  # same script only: same() calls Marathi vs English equal
+        dev = bool(_DEVANAGARI.search(v))
+        return next(
+            (
+                f
+                for k, f in by_key.items()
+                if bool(_DEVANAGARI.search(_portal(f))) == dev and same(k, v, _portal(f))
+            ),
+            None,
+        )
+
+    ok, bad, unknown, own = [], [], [], []
+    unplaced = 0
+    for b in boxes:
+        parts = b.rsplit("|", 2)
+        label, key, typed = parts if len(parts) == 3 else (b, "", "")
+        label, key, typed = label.strip(" *"), key.strip(), typed.strip().translate(DEV_DIGITS)
+        if any(rx.search(label) for rx, _ in _SECRET_FIELDS):
+            continue
+        if _identifier(key, label):
+            own.append(label)
+            continue
+        # A box whose name was scrolled off comes back with its value as the label (seen live:
+        # "I have no checked value for Kasliwal Harsh Padam"). Such a label is never shown.
+        if (
+            label in ("", "?")
+            or _norm(label) == _norm(typed)
+            or _LONG_DIGITS.search(label)
+            or (not typed and by_value(label))
+        ):
+            label, typed = "", typed or label
+        f = by_key.get(key) or (None if label else by_value(typed))
+        if f is None:
+            if label:
+                unknown.append(label)
+            else:
+                unplaced += 1  # said, but what is typed in it is not repeated
+            continue
+        name = label or f["label"]
+        if typed and same(f["field_key"], typed, _portal(f)):
+            ok.append(name)
+        else:
+            bad.append((name, _portal(f)))
+    if not (ok or bad or unknown or own or unplaced):
+        return t(lang, "fill.check.none") or ""
+    out = [(t(lang, "fill.check.bad") or "").format(label=lb, value=v) for lb, v in bad]
+    if ok:
+        out.append((t(lang, "fill.check.ok") or "").format(labels=", ".join(ok)))
+    if unknown:
+        out.append((t(lang, "fill.check.unknown") or "").format(labels=", ".join(unknown)))
+    if own:
+        out.append((t(lang, "fill.check.self") or "").format(labels=", ".join(own)))
+    if unplaced:
+        out.append((t(lang, "fill.check.unplaced") or "").format(n=unplaced))
+    return " ".join(out)
 
 
 # ---------- WRITER: text only ----------
@@ -472,6 +584,20 @@ def _seen(f: SeenField, lang: str) -> GuideField:
     return GuideField(label=f.label, filled=f.appears_filled)
 
 
+def skip_told(r: Reading, said: list[Row], lang: str) -> Reading:
+    """The reading the writer gets: an Aadhaar/account box Aster already told them to type
+    themselves counts as handled, so guidance moves on (seen live: "Aadhaar Number: please type…"
+    said after every other box, and again after "I will do it later")."""
+    told = {m["content"] for m in said if m["role"] == "assistant"}
+    fields = [
+        f.model_copy(update={"appears_filled": True})
+        if (doc := _identifier(None, f.label)) and _identifier_note(f.label, doc, lang) in told
+        else f
+        for f in r.fields
+    ]
+    return r.model_copy(update={"fields": fields})
+
+
 def classify(r: Reading) -> tuple[str, bool]:
     """-> (page kind, sensitive), decided in code whatever the reader called the page."""
     kind: str = r.page_kind
@@ -599,9 +725,23 @@ async def run_screen_turn(
         fields, said, (frame_id, r) = await asyncio.gather(checked(), talk, reader.current())
         read_ms = round((time.monotonic() - t0) * 1000)
         w, writer = None, None
-        if r is not None and not classify(r)[1]:
-            w, writer = await write(s, ctx, r, fields, question, recent_talk(said))
-        g = postprocess(r, w, fields, ctx.lang, frame_id or "", question)
+        check = (
+            bool(question and VERIFY.search(question))
+            and r is not None
+            and not classify(r)[1]
+            and reader.frame is not None
+        )
+        if check:
+            await send(AgentState(state="thinking", detail="Checking what you typed"))
+            boxes = await check_screen(s, ctx, reader.frame, fields)  # type: ignore[arg-type]
+            g = postprocess(r, None, fields, ctx.lang, frame_id or "")
+            text = verdict(boxes, fields, ctx.lang) if boxes is not None else None
+            g = g.model_copy(update={"instruction": text or t(ctx.lang, "fill.unreadable") or ""})
+        else:
+            if r is not None and not classify(r)[1]:
+                told = skip_told(r, said, ctx.lang)
+                w, writer = await write(s, ctx, told, fields, question, recent_talk(said))
+            g = postprocess(r, w, fields, ctx.lang, frame_id or "", question)
         guided_ms = round((time.monotonic() - t0) * 1000)
         await send(g)
         if g.sensitive:

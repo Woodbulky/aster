@@ -40,5 +40,11 @@
   "fill.pause.payment": "This is a payment page. Please do this yourself. I'll wait.",
   "fill.pause.submit_confirm": "Review everything carefully. When you're ready, you can submit.",
   "fill.no_writer": "I can see your page, but I can't work out the next step right now. Ask me again in a moment.",
-  "fill.doc_default": "document"
+  "fill.doc_default": "document",
+  "fill.check.ok": "On this screen these match your checked values: {labels}.",
+  "fill.check.bad": "{label} doesn't look right — it should be {value}. Please check it.",
+  "fill.check.unknown": "I have no checked value for {labels} — check against your document.",
+  "fill.check.self": "{labels}: check this yourself against your document.",
+  "fill.check.none": "I can't see any filled boxes on this screen yet. Scroll to them and ask me again.",
+  "fill.check.unplaced": "I couldn't see the name of {n} box(es) near the edge of the screen — scroll so the names show and ask me again."
 }
