@@ -59,6 +59,13 @@ class Interrupt(_In):
     type: Literal["interrupt"]
 
 
+class SetLang(_In):
+    """The reply-language toggle, on the open socket (a reconnect took a second and cut audio)."""
+
+    type: Literal["set_lang"]
+    lang: Lang
+
+
 class ScreenFrame(_In):
     """Followed by ONE binary frame (JPEG). Held in memory only, never written (guardrail 7)."""
 
@@ -69,7 +76,15 @@ class ScreenFrame(_In):
 
 ClientMsg = TypeAdapter(
     Annotated[
-        Hello | UserText | UiEvent | Ping | AudioStart | AudioEnd | Interrupt | ScreenFrame,
+        Hello
+        | UserText
+        | UiEvent
+        | Ping
+        | AudioStart
+        | AudioEnd
+        | Interrupt
+        | SetLang
+        | ScreenFrame,
         Field(discriminator="type"),
     ]
 )

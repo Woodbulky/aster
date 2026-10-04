@@ -9,6 +9,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -47,6 +48,7 @@ from app.ws.protocol import (
     Pong,
     Ready,
     ScreenFrame,
+    SetLang,
     TranscriptMsg,
     TtsAudio,
     TtsUnavailable,
@@ -245,8 +247,8 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
             await send(ErrorMsg(code="no_speech", message="I didn't catch that"))
             return await send(AgentState(state="idle"))
         await send(TranscriptMsg(text=tr.text, lang=tr.lang, provider=tr.provider))  # type: ignore[arg-type]
-        # Replies follow the reply-language toggle (hello.lang); a language switch reconnects
-        # with the new hello. What the user actually spoke is stored on their message.
+        # Replies follow the reply-language toggle (hello.lang, then set_lang). What the user
+        # actually spoke is stored on their message.
         spoken = True
         shot = frames.take_utterance() if filling else None
         if filling and (shot or reader.busy or reader.has):
@@ -280,10 +282,14 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
         )
 
     loop = asyncio.get_running_loop()
+    # Documents read while others of the session are still being read: their cards are shown at
+    # once, their spoken summary waits for the last one (one turn for a batch, not one per file).
+    # ponytail: per connection; a reconnect mid-batch drops the earlier ones from the recap only.
+    batch: list[tuple[dict, list]] = []
 
     def document_done(doc_id: str) -> None:
         # The pipeline may finish on another loop or thread: hand the turn to this socket's loop.
-        job = lambda: _document_processed(ctx, send, {"document_id": doc_id}, text_turn)  # noqa: E731
+        job = lambda: _document_processed(ctx, send, {"document_id": doc_id}, text_turn, batch)  # noqa: E731
         loop.call_soon_threadsafe(lambda: start(job, preempt=False))
 
     unsubscribe = pipeline.subscribe(ctx.session["id"], document_done)
@@ -354,6 +360,8 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                 case Interrupt():
                     if current and not current.done():
                         current.cancel()  # run() tells the client the agent is idle
+                case SetLang(lang=lang):
+                    ctx.lang = lang  # at once, not queued: the next reply and its voice use it
                 case UserText(text=text):
                     start(lambda text=text: text_turn(user_text=text), preempt=True)
                 case UiEvent(name="form_selected", payload=payload):
@@ -365,7 +373,9 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
                     start(lambda: _documents_requested(ctx, send, text_turn), preempt=False)
                 case UiEvent(name="document_processed", payload=payload):
                     start(
-                        lambda payload=payload: _document_processed(ctx, send, payload, text_turn),
+                        lambda payload=payload: _document_processed(
+                            ctx, send, payload, text_turn, batch
+                        ),
                         preempt=False,
                     )
                 case UiEvent(name="flag_resolved", payload=payload):
@@ -428,9 +438,23 @@ async def _documents_requested(ctx: Ctx, send, turn) -> None:
     )
 
 
-async def _document_processed(ctx: Ctx, send, payload: dict, turn) -> None:
-    """The client saw a document finish: field review card in code, then a short spoken
-    summary."""
+# A document still "processing" after this long was cut off (e.g. a restart): don't wait for it.
+READING_MAX_S = 180
+
+
+def _still_reading(docs: list[dict]) -> bool:
+    now = datetime.now(UTC)
+    return any(
+        d["status"] in ("uploaded", "processing")
+        and (now - datetime.fromisoformat(d["created_at"])).total_seconds() < READING_MAX_S
+        for d in docs
+    )
+
+
+async def _document_processed(ctx: Ctx, send, payload: dict, turn, batch: list) -> None:
+    """A document finished (server push or the client's poll): its field review card and any new
+    flag cards in code at once; then a short spoken summary, held until no other document of the
+    session is still being read so one summary covers the batch."""
     try:
         doc_id = str(DocumentProcessed.model_validate(payload).document_id)
     except ValidationError:
@@ -438,25 +462,36 @@ async def _document_processed(ctx: Ctx, send, payload: dict, turn) -> None:
     res = await run_tool_ui(ctx, send, "get_document_status", {"document_id": doc_id})
     if not res.ok:
         return await send(ErrorMsg(code="document_not_found", message=res.error or "not found"))
-    data = json.dumps(res.data, ensure_ascii=False)
-    if res.data["status"] != "read":
-        await turn(ui_event=f"Document not read: {data}. Say so in one sentence with the reason.")
+    flags = await show_new_flag_cards(ctx, send) if res.data["status"] == "read" else []
+    batch.append((res.data, flags))
+    docs = await asyncio.to_thread(repo.list_documents, ctx.db, ctx.user_id, ctx.session["id"])
+    if _still_reading(docs):
         return
-    flags = await show_new_flag_cards(ctx, send)
-    note = (
-        f"Document read: {data}. The field review card is on screen. In one or two short "
-        "sentences say it was read and what it shows. If not_found_on_document is not empty, "
-        "name those fields and ask the user to check them on the card; the document itself was "
-        "read fine."
-    )
-    if flags:
-        note += (
-            f" Checking it against the other documents and the profile found: "
-            f"{json.dumps(flags, ensure_ascii=False)}. Their cards are on screen. Explain the "
+    done, batch[:] = list(batch), []
+    read = [d for d, _ in done if d["status"] == "read"]
+    unread = [d for d, _ in done if d["status"] != "read"]
+    found = [f for _, fs in done for f in fs]
+    notes = []
+    if read:
+        notes.append(
+            f"Documents read: {json.dumps(read, ensure_ascii=False)}. Their field review cards "
+            "are on screen. In one or two short sentences say they were read and what they show. "
+            "If not_found_on_document is not empty, name those fields and ask the user to check "
+            "them on the card; the document itself was read fine."
+        )
+    if unread:
+        notes.append(
+            f"Documents not read: {json.dumps(unread, ensure_ascii=False)}. Say so in one "
+            "sentence each, with the reason."
+        )
+    if found:
+        notes.append(
+            "Checking them against the other documents and the profile found: "
+            f"{json.dumps(found, ensure_ascii=False)}. Their cards are on screen. Explain the "
             "first one in one or two sentences and ask which value is right and why. Never "
             "pick a value yourself."
         )
-    await turn(ui_event=note)
+    await turn(ui_event=" ".join(notes))
 
 
 async def _flag_resolved(ctx: Ctx, send, payload: dict, turn) -> None:

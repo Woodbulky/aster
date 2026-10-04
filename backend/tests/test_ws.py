@@ -115,3 +115,70 @@ def test_rate_limit(client, store: FakeStore, sid: str) -> None:
             assert ws.receive_json()["type"] == "pong"
         ws.send_json({"type": "ping"})
         assert ws.receive_json()["code"] == "rate_limited"
+
+
+def test_set_lang_switches_replies_on_the_open_socket(client, store: FakeStore, sid: str) -> None:
+    c, llm = client
+    llm.rounds += [text("नमस्कार!"), text("नमस्ते!")]
+    with c.websocket_connect(f"/ws/session/{sid}") as ws:
+        ws.send_json(HELLO)
+        until(ws, "assistant_message")  # greeting, in Marathi
+        until(ws, "agent_state")
+        ws.send_json({"type": "set_lang", "lang": "hi"})
+        ws.send_json({"type": "user_text", "text": "hello"})
+        assert until(ws, "assistant_message")[-1]["lang"] == "hi"  # no reconnect needed
+        assert "Hindi" in llm.calls[-1]["messages"][0]["content"]
+
+
+def test_a_batch_of_documents_gets_one_spoken_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cards at once for each document; the spoken summary waits for the last one of the batch."""
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from app.agent.tools import ToolResult
+    from app.ws import voice
+
+    now = datetime.now(UTC).isoformat()
+    docs = {
+        "00000000-0000-0000-0000-00000000000a": "processing",
+        "00000000-0000-0000-0000-00000000000b": "processing",
+        # cut off by a restart long ago: never waited for
+        "00000000-0000-0000-0000-00000000000c": "processing",
+    }
+    old = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    cards: list[str] = []
+    turns: list[str] = []
+
+    async def tool(_ctx, _send, name, args):
+        cards.append(args["document_id"])
+        return ToolResult(ok=True, data={"document": args["document_id"][-1], "status": "read"})
+
+    async def no_flags(_ctx, _send):
+        return []
+
+    async def turn(**kw):
+        turns.append(kw["ui_event"])
+
+    def listed(_db, _u, _s):
+        return [
+            {"id": k, "status": v, "created_at": old if k.endswith("c") else now}
+            for k, v in docs.items()
+        ]
+
+    monkeypatch.setattr(voice, "run_tool_ui", tool)
+    monkeypatch.setattr(voice, "show_new_flag_cards", no_flags)
+    monkeypatch.setattr(voice.repo, "list_documents", listed)
+    ctx = SimpleNamespace(db=None, user_id="u1", session={"id": "s1"})
+    batch: list = []
+
+    async def done(doc_id: str) -> None:
+        docs[doc_id] = "extracted"
+        await voice._document_processed(ctx, None, {"document_id": doc_id}, turn, batch)
+
+    asyncio.run(done("00000000-0000-0000-0000-00000000000a"))
+    assert cards == ["00000000-0000-0000-0000-00000000000a"] and turns == []  # b still reading
+    asyncio.run(done("00000000-0000-0000-0000-00000000000b"))
+    assert len(cards) == 2 and len(turns) == 1  # one summary for both
+    assert '"document": "a"' in turns[0] and '"document": "b"' in turns[0]
+    assert batch == []

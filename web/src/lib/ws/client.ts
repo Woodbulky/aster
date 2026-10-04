@@ -77,6 +77,8 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
   const [player] = useState(() => new Player());
   const ws = useRef<WebSocket | null>(null);
   const loaded = useRef(false);
+  // The reply language: sent in hello (reconnects) and as set_lang on the open socket (no reconnect).
+  const langRef = useRef(lang);
 
   useEffect(() => {
     let closed = false;
@@ -89,7 +91,7 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     const upsertAssistant = (id: string, f: (text: string) => string, done: boolean, l?: Lang) =>
       setItems((xs) => {
         const i = xs.findIndex((x) => x.kind === "msg" && x.id === id);
-        if (i < 0) return [...xs, { kind: "msg", id, role: "assistant", text: f(""), lang: l ?? lang, streaming: !done }];
+        if (i < 0) return [...xs, { kind: "msg", id, role: "assistant", text: f(""), lang: l ?? langRef.current, streaming: !done }];
         const cur = xs[i] as Extract<Item, { kind: "msg" }>;
         const next = [...xs];
         next[i] = { ...cur, text: f(cur.text), streaming: !done, lang: l ?? cur.lang };
@@ -173,7 +175,7 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
       if (!token) return setStatus("denied");
       const sock = new WebSocket(`${API_URL.replace(/^http/, "ws")}/ws/session/${sessionId}`);
       ws.current = sock;
-      sock.onopen = () => sock.send(JSON.stringify({ type: "hello", token, lang } satisfies ClientMsg));
+      sock.onopen = () => sock.send(JSON.stringify({ type: "hello", token, lang: langRef.current } satisfies ClientMsg));
       sock.binaryType = "arraybuffer";
       sock.onmessage = (e) => {
         if (typeof e.data !== "string") {
@@ -196,14 +198,20 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     void connect();
     return () => {
       closed = true;
-      setStatus("connecting"); // the next effect run (language switch) opens a fresh socket
+      setStatus("connecting");
       window.clearTimeout(timer);
       window.clearTimeout(happyTimer);
       player.stop();
       ws.current?.close();
       ws.current = null;
     };
-  }, [sessionId, lang, player]); // a language switch reconnects with the new hello.lang
+  }, [sessionId, player]);
+
+  useEffect(() => {
+    if (langRef.current === lang) return;
+    langRef.current = lang;
+    if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "set_lang", lang } satisfies ClientMsg));
+  }, [lang]);
 
   useEffect(() => () => player.close(), [player]);
 
@@ -219,9 +227,9 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
   const sendText = useCallback(
     (text: string) => {
       if (!send({ type: "user_text", text })) return;
-      setItems((xs) => [...xs, { kind: "msg", id: crypto.randomUUID(), role: "user", text, lang }]);
+      setItems((xs) => [...xs, { kind: "msg", id: crypto.randomUUID(), role: "user", text, lang: langRef.current }]);
     },
-    [send, lang],
+    [send],
   );
 
   const sendUi = useCallback(
@@ -232,11 +240,11 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
   /** One utterance: header, ONE binary frame, end (docs/API.md). */
   const sendAudio = useCallback(
     (audio: ArrayBuffer, mime: string) => {
-      if (!send({ type: "audio_start", mime, lang_hint: lang })) return false;
+      if (!send({ type: "audio_start", mime, lang_hint: langRef.current })) return false;
       ws.current!.send(audio);
       return send({ type: "audio_end" });
     },
-    [send, lang],
+    [send],
   );
 
   /** One screen frame: header, then ONE binary JPEG (FORM_FILL.md frame policy is the caller's). */

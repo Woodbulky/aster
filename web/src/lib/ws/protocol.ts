@@ -13,6 +13,7 @@ export type ClientMsg =
   | { type: "audio_start"; mime: string; lang_hint: Lang | null } // then ONE binary frame, then audio_end
   | { type: "audio_end" }
   | { type: "interrupt" }
+  | { type: "set_lang"; lang: Lang } // the reply-language toggle, on the open socket
   | { type: "screen_frame"; frame_id: string; reason: FrameReason }; // then ONE binary frame (JPEG), held in backend memory only
 
 export type FrameReason = "utterance" | "change" | "manual";

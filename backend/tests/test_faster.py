@@ -488,3 +488,13 @@ def test_promoted_research_is_a_valid_draft_pack() -> None:
     assert pack.criteria[0].logic is None  # a reviewer writes the rule
     assert [d.doc_type for d in pack.documents] == ["income_certificate", "other"]
     assert pack.official_urls == [PAGE_URL]
+
+
+def test_thinking_is_sent_before_any_db_write(
+    store: FakeStore, run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent = run(text("hi"), user_text="hello")
+    first = sent[0]
+    assert first.type == "agent_state" and first.state == "thinking"
+    user = [m for m in store.messages if m["role"] == "user"]
+    assert user[0]["content"] == "hello"  # still stored, with its id kept for the turn

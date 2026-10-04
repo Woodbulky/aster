@@ -523,35 +523,32 @@ async def run_turn(
 ) -> None:
     """ctx.lang is the reply language (the user's toggle). user_lang = the language the user
     actually spoke (STT), stored on their message. t0 = when the utterance ended (voice)."""
+    await send(AgentState(state="thinking"))  # first: the avatar reacts before any DB call
+    rows: list[dict[str, Any]] = []
     if user_text is not None:
-        row = await _db(
-            repo.add_message,
-            ctx.db,
-            ctx.user_id,
-            ctx.session["id"],
+        rows.append(
             {
                 "role": "user",
                 "content": user_text,
                 "lang": user_lang or ctx.lang,
                 "input_mode": input_mode,
-            },
+            }
         )
-        ctx.message_id = row["id"] if row else None
         ctx.input_mode = input_mode
         ctx.user_text = user_text
     if ui_event is not None:
         if user_text is None:
             ctx.input_mode = "ui"  # a tap is not the user's words: resolve_flag refuses it
-        await _db(
-            repo.add_message,
-            ctx.db,
-            ctx.user_id,
-            ctx.session["id"],
-            {"role": "system", "content": ui_event, "lang": ctx.lang, "input_mode": "ui"},
-        )
+        rows.append({"role": "system", "content": ui_event, "lang": ctx.lang, "input_mode": "ui"})
 
-    await send(AgentState(state="thinking"))
-    changed = await sync_phase(ctx, send)
+    async def store() -> None:
+        for r in rows:  # in order: the history reads them back by created_at
+            row = await _db(repo.add_message, ctx.db, ctx.user_id, ctx.session["id"], r)
+            if r["role"] == "user":
+                ctx.message_id = row["id"] if row else None
+
+    # The messages are written while the phase syncs (independent; one round trip saved).
+    _, changed = await asyncio.gather(store(), sync_phase(ctx, send))
     if user_text is not None and ctx.session["phase"] in FLAG_PHASES:
         if await _apply_answers(s, ctx, send, user_text):
             changed = await sync_phase(ctx, send) or changed
