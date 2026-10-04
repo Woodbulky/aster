@@ -152,6 +152,23 @@ def find_fetched(db: Client, user_id: str, session_id: str, url: str) -> Row | N
     return _one(q.execute().data)
 
 
+def list_fetched(db: Client, user_id: str, session_id: str) -> list[Row]:
+    """This session's stored pages: url + content id only (the text stays in the table)."""
+    q = db.table("fetched_content").select("id,url").eq("user_id", user_id)
+    return q.eq("session_id", session_id).order("fetched_at").execute().data
+
+
+# ---------- research shared across students (public web facts, no user data) ----------
+def fresh_research_cache(db: Client) -> list[Row]:
+    """Unexpired rows. ponytail: the whole (small) table; an index on a trigram if it grows."""
+    now = datetime.now(UTC).isoformat()
+    return db.table("research_cache").select("*").gt("expires_at", now).execute().data
+
+
+def put_research_cache(db: Client, values: Row) -> None:
+    db.table("research_cache").upsert(values, on_conflict="scheme_norm").execute()
+
+
 def add_research(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
     row = {**values, "user_id": user_id, "session_id": session_id}
     return _one(db.table("research_results").insert(row).execute().data)

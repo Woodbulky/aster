@@ -499,3 +499,51 @@ User decisions: the UI stays English (the M1 decision holds; i18n = agent and ca
 - Account-level audit events (consents, profile edits: `session_id` null) are verified by the CLI but not shown in the UI.
 - The pending `/code-review` findings on the Groq-first screen reader (commit `1841183`) are not addressed in M8.
 - Consent screens and the Delete flow were not clicked through by hand in Chrome; the API paths were checked live.
+
+## 2026-10-04 · Guided filling: Talk or Chat, and "check what I typed"
+User asks: choose to talk or chat while filling and switch mid-way; when told "I'll do the Aadhaar later, just verify the other fields", check them instead of repeating the Aadhaar line.
+
+**What changed**
+- `/fill`: a **Talk / Chat** switch (header + PiP). Talk = hands-free mic + spoken replies; Chat = mic off, replies muted (`Player.muted`), a text box. The switch is the mic (no "Talk" with nothing listening; opens in Chat until a tap). One conversation panel for typed and spoken turns. Typed questions send a `change` frame first when the page changed. The backend already answered typed text in `form_fill`.
+- **Field check** (`screen.check_screen` + `verdict`, `prompts/screen_checker.md`): on check/verify/correct/सही/बरोबर…, a vision call reads every filled box (labels + keys only, no checked values); code compares with `same()`; never repeats what is typed; identifiers → "check this yourself"; sensitive pages never. Scrolled-off labels are placed by value (seen live: "no checked value for Kasliwal Harsh Padam"); value-like or long-digit labels are never shown; unplaceable boxes are counted. Wording "doesn't look right — please check it" (a misread is possible).
+- The Aadhaar/account note is said once (`skip_told`), then guidance moves on. Checked values reach the portal in English digits (`readiness()`; "२५२६/२०२५" seen live). `field_label("dob")` → "Date of birth". The mock portal lists Ahmednagar; `*` dropped from box labels.
+
+**How verified**
+- Chrome (local): Chat → typed "What should I fill in the 12th percentage box?" → text answer, no speech; Talk ↔ Chat toggles the mic both ways.
+- Live checker on the mock form (Groq): all 9 boxes read and matched 3/3 runs, also with the top labels scrolled off. A 614 px image misread names/numbers: frames stay ≤ 1280 px.
+- pytest (`test_screen.py`): check keywords, verdict (wrong year, Devanagari digits, unblanked Aadhaar not repeated, secrets skipped), scrolled-off labels, identifier said once.
+
+## 2026-10-04 · Faster research + faster turns (user-approved plan; document trust is next)
+User decisions: conversation goes to Groq first (documents stay GPU-first); build "faster research" + "faster turns" now; Context.dev joins Tavily as fallback/gap-filler; a wrong document in a slot will be blocked with a gentle "might not be the right document" (next round, with fake-document signals).
+
+**What changed**
+- **One-step research:** `research_scheme` = search + the 3 pages most about the scheme, read side by side (Tavily brings page text with the results: `include_raw_content: "text"`). Research = 2 LLM rounds (was 4–6; ~50–60 s GPU, up to ~170 s Groq rate-limited). Pages ranked by the scheme's distinctive name words (title/link double, whole words), then official.
+- **Context.dev** (`research/contextdev.py`, REST, breaker): `/web/search` after Tavily (down or nothing official), `/web/scrape` when `fetch.py` fails, gets < 500 chars, or meets a scan it can't OCR.
+- **Shared research cache:** `0008_research_cache` (no user data, RLS on, service key only; advisors: only the expected "no policy" INFO; types regenerated). `save_research` writes it; `set_form(scheme_name)` reuses a fresh match (30 days, ≥ 92 fuzzy) → no research rounds; audit `research.reused`. `scripts/promote_research.py` → draft pack for review.
+- **Turns:** `BRAIN_PRIMARY=fallback` (Groq first for conversation; `answers.py`, OCR and extraction unchanged). Read-only lookups in one round run with `asyncio.gather`. `sync_phase` / `_system_prompt` load side by side, and `sync_phase` repeats until the phase settles. Fast paths in code: a clearly named pack scheme in choose_form → `set_form` + `get_knowledge_pack` before the LLM; a short "done / सगळं तपासा / सब चेक करो" in documents → `run_verification`. The research prompt lists pages already read this session.
+
+**How verified**
+- pytest **372 passed** (`test_faster.py`: Context.dev requests/retries/breaker/off, both chains, parallel page reads < 0.9 s for 2×0.5 s, cache write → reuse with 2 LLM calls and no research tools, expired/unlike names, parallel lookups keep call order, done-uploading fast path (en/mr/hi) and a long message that isn't one, `prefer="fallback"`, read-pages line, draft pack validates). ruff clean; web typecheck + lint.
+- Live (Tavily only, no DB writes): "Tata Capital Pankh" search + 3 pages in **2.2–4.2 s**; with `prefer_domains=tatacapital.com` the picked pages are the official "Tata Pankh Scholarship Programme" PDF, the Pankh impact report and careers360 (a WhatsApp page dropped by the ranking).
+
+**Open issues**
+- ~~Context.dev key not in `backend/.env` yet~~ The user added it. Live (2026-10-04): the first scrape got **HTTP 400**: `parsers` belongs in `sharedParams` (docs re-read; fixed + test; 4xx bodies are now logged, they describe our request, never page text). Then `/web/scrape` scholarships.gov.in → "NSP : National Scholarship Portal", 5,365 chars, 10.5 s, 1 credit (request `8c004315…`); `/web/search` "Tata Capital Pankh…" → 10 results all with page text, 11.5 s, 2 credits (request `54f86999…`). 247 credits left.
+- A full research turn through Groq was not timed end to end (target < 20 s).
+- Next round: wrong-document check (EWS vs income) and fake/AI-document signals, as planned.
+
+## 2026-10-04 · Documents Aster doesn't blindly trust (next round of the approved plan)
+User decision: a wrong document in a slot is blocked with a gentle "might not be the right document"; nothing is called genuine or fake.
+
+**What changed**
+- `verify/doctype.py`: slot check by title phrases (en/mr/hi) with look-alike groups; questioned only when the slot's own title is missing and a look-alike's is present (a bad scan is never flagged). Block flag `doc_type_mismatch` with the matched words (never the line), nothing extracted. "Below / पेक्षा कमी / से कम" next to the income → block flag `income_is_a_limit`, value not saved (the EWS "₹8 lakh" trap).
+- `verify/integrity.py` (no new dependency): AI markers (IPTC `trainedAlgorithmicMedia`, Stable Diffusion/ComfyUI PNG chunks, generator names) → block; editor in PDF producer/creator/XMP or image EXIF/XMP, or a PDF modified > 2 days after creation → warn. Neutral text in en/mr/hi ("I can't tell whether a document is genuine — the scholarship office checks the original").
+- Flags are `rule` type (no schema change), answered with a reason only (`resolve` refuses a value; the card shows no pick/type). Acknowledging a slot/limit check reads the file again, trusted (REST and voice paths). A newer upload in the slot closes the old file's checks; a second wrong upload is asked about again (the flag signature includes the document id).
+- Field review card lists "Checks on this file". Rule `INCOME_CERT_DATE_IN_FUTURE` (block; rules 2026.2). Prompt + CLAUDE.md guardrail 10: never call a document genuine/fake/the right one.
+
+**How verified**
+- pytest: `test_doc_trust.py` 17 (EWS in the income slot → block, no extraction, mr text, reason-only card; acknowledge → re-read → value saved, no second limit flag; limit income not used; real certificate passes; Canva PDF warns but is read + audited; replaced file closes checks; second wrong upload asked again; signals for plain PDF/PNG = none, Canva, 59-day modified, SD chunk, IPTC AI marker, Photoshop EXIF; wording never says fake/forged). Web typecheck + lint.
+
+**Open issues**
+- Not run on real EWS / edited / AI-generated files yet (fixtures are synthetic). Title phrases are a starting list: add real wording as it is seen.
+- QR verification of certificates and DigiLocker as a trusted source remain future work (a QR decoder is a new dependency: ask first).
+- `/guardrails` on the whole diff: 1 fix. The shared research cache could carry items quoted from a link one student pasted to every later student (guardrail 8). `0009_fetched_content_via` records how a page was found (`search` | `link`); only `search` items are shared, and their text goes through `redact_ids`. Types regenerated; advisors unchanged. pytest 391.

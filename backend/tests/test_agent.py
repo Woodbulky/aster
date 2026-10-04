@@ -193,10 +193,32 @@ def test_onboarding_turn(store: FakeStore, run) -> None:
     assert llm.calls[1]["messages"][-1]["role"] == "tool"
 
 
+def test_a_clearly_named_scheme_is_set_in_code(store: FakeStore, run) -> None:
+    """No LLM tool round: the pack is matched, set and its verified rules loaded before the LLM,
+    which only writes the reply (and sees both calls as its own)."""
+    store.profile.update(COMPLETE_PROFILE)
+    llm = FakeLLM(text("ठीक आहे!"))
+    sent = run(llm, user_text="OBC Aid")
+    assert [m.phase for m in sent if m.type == "phase"] == [
+        "choose_form",
+        "research",
+        "eligibility",
+    ]
+    assert store.sessions["s1"]["scheme_key"] == "demo.obc_aid"
+    assert len(llm.calls) == 1
+    made = [
+        m["tool_calls"][0]["function"]["name"]
+        for m in llm.calls[0]["messages"]
+        if m.get("tool_calls")
+    ]
+    assert made == ["set_form", "get_knowledge_pack"]
+    assert "Current phase: eligibility" in llm.calls[0]["messages"][0]["content"]
+
+
 def test_choose_form_to_research(store: FakeStore, run) -> None:
     store.profile.update(COMPLETE_PROFILE)
     llm = FakeLLM(call("set_form", {"scheme_key": "demo.obc_aid"}), text("ठीक आहे!"))
-    sent = run(llm, user_text="OBC Aid")
+    sent = run(llm, user_text="the first one please")  # not a scheme name: the LLM picks
     # onboarding -> choose_form at the start of the turn, -> research after set_form
     assert [m.phase for m in sent if m.type == "phase"] == ["choose_form", "research"]
     assert store.sessions["s1"]["phase"] == "research"

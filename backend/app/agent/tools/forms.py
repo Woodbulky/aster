@@ -9,6 +9,7 @@ from rapidfuzz.utils import default_process
 
 from app.agent.tools import Card, Ctx, ToolResult, register
 from app.agent.tools.eligibility import counts, evaluate_pack
+from app.agent.tools.research import cached_research, reuse_research
 from app.db import supabase as repo
 from app.research.packs import portals, usable_packs
 
@@ -172,7 +173,18 @@ def set_form(ctx: Ctx, args: SetFormArgs) -> ToolResult:
         return ToolResult(ok=False, error="session not updated")
     ctx.session.update(row)
     repo.write_audit(ctx.db, ctx.user_id, ctx.session["id"], "form.set", values, actor="agent")
-    return ToolResult(
-        ok=True,
-        data={**values, "known_rules": bool(args.scheme_key)},
-    )
+    data = {**values, "known_rules": bool(args.scheme_key)}
+    # Another student already researched this scheme: reuse it (no LLM rounds) unless this
+    # session already has research for it.
+    if (
+        args.scheme_name
+        and (row := cached_research(ctx, args.scheme_name))
+        and not repo.latest_research(ctx.db, ctx.user_id, ctx.session["id"], args.scheme_name)
+        and (card := reuse_research(ctx, args.scheme_name, row))
+    ):
+        data["research"] = (
+            f"already found earlier (read on {str(row['saved_at'])[:10]}), unverified: the card "
+            "shows it; do not research again unless the user asks"
+        )
+        return ToolResult(ok=True, data=data, card=card)
+    return ToolResult(ok=True, data=data)

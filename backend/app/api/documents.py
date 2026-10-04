@@ -15,7 +15,7 @@ from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.deps import Db, UserId
 from app.research.packs import DOC_TYPES
-from app.verify.checks import ResolveError, readiness, resolve
+from app.verify.checks import ResolveError, readiness, reread_after, resolve
 from app.verify.pipeline import process_document
 
 router = APIRouter(prefix="/api/sessions/{session_id}")
@@ -133,18 +133,34 @@ class AcknowledgeIn(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
 
 
-def _resolve(db: Any, user_id: str, session_id: UUID, flag_id: UUID, **kw: Any) -> dict[str, Any]:
+def _resolve(
+    db: Any,
+    user_id: str,
+    session_id: UUID,
+    flag_id: UUID,
+    tasks: BackgroundTasks,
+    s: Settings,
+    **kw: Any,
+) -> dict[str, Any]:
     _session(db, user_id, session_id)
     try:
         flag = resolve(db, user_id, str(session_id), str(flag_id), **kw)
     except ResolveError as e:
         raise HTTPException(409 if "already" in str(e) else 400, str(e)) from None
+    if doc_id := reread_after(flag):  # "it is the right document": read it, trusting its slot
+        tasks.add_task(process_document, s, user_id, str(session_id), doc_id)
     return {"flag_id": flag["id"], "status": flag["status"]}
 
 
 @router.post("/flags/{flag_id}/resolve")
 def resolve_flag(
-    session_id: UUID, flag_id: UUID, body: ResolveIn, db: Db, user_id: UserId
+    session_id: UUID,
+    flag_id: UUID,
+    body: ResolveIn,
+    tasks: BackgroundTasks,
+    db: Db,
+    user_id: UserId,
+    s: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     """Pick a candidate or type a value (+ reason) -> confirmed value; neither -> acknowledged."""
     return _resolve(
@@ -152,6 +168,8 @@ def resolve_flag(
         user_id,
         session_id,
         flag_id,
+        tasks,
+        s,
         reason=body.reason,
         via="tap",  # voice answers go through the resolve_flag tool, with their message id
         candidate_id=str(body.candidate_id) if body.candidate_id else None,
@@ -161,9 +179,15 @@ def resolve_flag(
 
 @router.post("/flags/{flag_id}/acknowledge")
 def acknowledge_flag(
-    session_id: UUID, flag_id: UUID, body: AcknowledgeIn, db: Db, user_id: UserId
+    session_id: UUID,
+    flag_id: UUID,
+    body: AcknowledgeIn,
+    tasks: BackgroundTasks,
+    db: Db,
+    user_id: UserId,
+    s: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
-    return _resolve(db, user_id, session_id, flag_id, reason=body.reason, via="tap")
+    return _resolve(db, user_id, session_id, flag_id, tasks, s, reason=body.reason, via="tap")
 
 
 @router.get("/audit")

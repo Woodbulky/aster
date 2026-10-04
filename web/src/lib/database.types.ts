@@ -177,6 +177,7 @@ export type Database = {
           title: string | null
           url: string
           user_id: string
+          via: string
         }
         Insert: {
           fetched_at?: string
@@ -186,6 +187,7 @@ export type Database = {
           title?: string | null
           url: string
           user_id: string
+          via?: string
         }
         Update: {
           fetched_at?: string
@@ -195,6 +197,7 @@ export type Database = {
           title?: string | null
           url?: string
           user_id?: string
+          via?: string
         }
         Relationships: [
           {
@@ -627,6 +630,30 @@ export type Database = {
           last_seen?: string | null
           name?: string
           url?: string
+        }
+        Relationships: []
+      }
+      research_cache: {
+        Row: {
+          expires_at: string
+          items: Json
+          saved_at: string
+          scheme_name: string
+          scheme_norm: string
+        }
+        Insert: {
+          expires_at: string
+          items: Json
+          saved_at?: string
+          scheme_name: string
+          scheme_norm: string
+        }
+        Update: {
+          expires_at?: string
+          items?: Json
+          saved_at?: string
+          scheme_name?: string
+          scheme_norm?: string
         }
         Relationships: []
       }

@@ -75,6 +75,9 @@ export type FieldReviewPayload = {
   pages: PageMeta[];
   fields: ReviewField[];
   unreadable: string[];
+  /** Checks on the file itself (might not be the right document, edited, AI markers). Never a
+   * verdict: each one has a flag card the user answers. Absent on cards stored before them. */
+  checks?: { severity: "block" | "warn"; text: string }[];
 };
 export type FlagCandidate = {
   id: string;

@@ -23,6 +23,16 @@ def _fixture_packs(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_paid_web_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Context.dev costs credits: off in every test, even with a key in a local .env. Its own
+    tests turn it back on with a mocked transport."""
+    from app.research import contextdev
+
+    monkeypatch.setattr(contextdev, "enabled", lambda s: False)
+    contextdev.breaker.success()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_llm_state() -> None:
     """Module-level discovery cache and breakers must not leak between tests."""
     from app.research import search
@@ -47,6 +57,7 @@ class FakeStore:
         self.audit: list[tuple[str, dict]] = []
         self.fetched: list[dict] = []
         self.research: list[dict] = []
+        self.cache: list[dict] = []  # research_cache: shared, no user scoping
 
     def _own(self, user_id: str) -> bool:
         return user_id == self.user_id
@@ -159,6 +170,22 @@ class FakeStore:
         ]
         return rows[-1] if rows else None
 
+    def list_fetched(self, _db, user_id, session_id):
+        assert self._own(user_id)
+        return [
+            {"id": f["id"], "url": f["url"]} for f in self.fetched if f["session_id"] == session_id
+        ]
+
+    def fresh_research_cache(self, _db):
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC).isoformat()
+        return [dict(r) for r in self.cache if r["expires_at"] > now]
+
+    def put_research_cache(self, _db, values):
+        self.cache = [r for r in self.cache if r["scheme_norm"] != values["scheme_norm"]]
+        self.cache.append(dict(values))
+
     def add_research(self, _db, user_id, session_id, values):
         assert self._own(user_id)
         row = {"id": f"r{len(self.research) + 1}", **values, "session_id": session_id}
@@ -201,6 +228,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         "find_fetched",
         "add_research",
         "latest_research",
+        "list_fetched",
+        "fresh_research_cache",
+        "put_research_cache",
     ):
         monkeypatch.setattr(repo, name, getattr(st, name))
     return st

@@ -1,5 +1,6 @@
-"""Web search via Tavily (POST /search, Bearer key; docs.tavily.com, checked 2026-10-03).
-Fallback chain: Tavily -> nothing (the agent says so and uses the knowledge packs / portal link)."""
+"""Web search: Tavily (POST /search, Bearer key; docs.tavily.com, checked 2026-10-04), then
+Context.dev when Tavily is down or found nothing official (find()). Both return each page's text
+with the results, so the one-step research needs no second download for most pages."""
 
 import logging
 from typing import Any
@@ -9,6 +10,7 @@ import httpx
 
 from app.config import Settings
 from app.llm.client import Breaker
+from app.research import contextdev
 
 log = logging.getLogger(__name__)
 breaker = Breaker()
@@ -35,7 +37,12 @@ def search(
         raise SearchUnavailable("search is not configured")
     if not breaker.ok():
         raise SearchUnavailable("search is temporarily unavailable")
-    body: dict[str, Any] = {"query": query, "max_results": max_results, "search_depth": "basic"}
+    body: dict[str, Any] = {
+        "query": query,
+        "max_results": max_results,
+        "search_depth": "basic",
+        "include_raw_content": "text",  # the page itself, for research_scheme
+    }
     # Tavily answers 400 to "*.gov.in" in prefer mode (seen live; the model writes wildcards).
     doms = sorted({d.strip().lower().removeprefix("*.") for d in prefer_domains or [] if d.strip()})
     if doms:
@@ -60,8 +67,35 @@ def search(
             "url": x.get("url") or "",
             "snippet": (x.get("content") or "")[:300],
             "official": official(x.get("url") or "", prefer_domains),
+            "text": x.get("raw_content") or "",
         }
         for x in results
         if x.get("url")
     ]
     return sorted(out, key=lambda x: not x["official"])  # stable: keeps Tavily's order otherwise
+
+
+def find(s: Settings, query: str, prefer_domains: list[str] | None = None) -> list[dict[str, Any]]:
+    """Tavily, then Context.dev when Tavily failed or found nothing official. Raises
+    SearchUnavailable only when neither could search."""
+    results: list[dict[str, Any]] = []
+    error: SearchUnavailable | None = None
+    try:
+        results = search(s, query, prefer_domains)
+    except SearchUnavailable as e:
+        error = e
+    if any(r["official"] for r in results) or not contextdev.enabled(s):
+        if error:
+            raise error
+        return results
+    try:
+        more = contextdev.search(s, query)  # no includeDomains: a preference, not a filter
+    except contextdev.ContextDevUnavailable as e:
+        if error:
+            raise error from e
+        return results
+    seen = {r["url"] for r in results}
+    extra = [
+        {**x, "official": official(x["url"], prefer_domains)} for x in more if x["url"] not in seen
+    ]
+    return sorted(results + extra, key=lambda x: not x["official"])

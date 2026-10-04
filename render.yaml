@@ -51,4 +51,6 @@ services:
       # priya); set them here only to override. No Bhashini (no credentials).
       - key: TAVILY_API_KEY
         sync: false
+      - key: CONTEXT_DEV_API_KEY
+        sync: false
       # PACKS_INCLUDE_DRAFT is dev-only and ignored when APP_ENV=prod; leave it unset here.

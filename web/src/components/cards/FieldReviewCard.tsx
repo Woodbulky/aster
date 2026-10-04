@@ -72,6 +72,15 @@ export function FieldReviewCard({ payload }: { payload: FieldReviewPayload }) {
           </li>
         ))}
       </ul>
+      {payload.checks && payload.checks.length > 0 && (
+        <ul aria-label="Checks on this file" className="mt-2 flex flex-col gap-1">
+          {payload.checks.map((c) => (
+            <li key={c.text} className={cn("flex items-start gap-1.5 text-sm", c.severity === "block" ? "text-destructive" : "text-[#b7791f]")}>
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {c.text}
+            </li>
+          ))}
+        </ul>
+      )}
       {payload.unreadable.length > 0 && (
         <p className="mt-2 flex items-start gap-1.5 text-sm text-[#b7791f]">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" /> Not found on this document: {payload.unreadable.join(", ")}. Check these on your document.

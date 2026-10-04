@@ -331,7 +331,7 @@ def test_live_research_turn(store: FakeStore, run, monkeypatch: pytest.MonkeyPat
     store.sessions["s1"].update(phase="research", scheme_name="Tata Pankh")
     monkeypatch.setattr(
         research_tools,
-        "search",
+        "find",
         lambda s, q, prefer=None: [{"title": "Pankh", "url": PAGE_URL, "official": True}],
     )
     monkeypatch.setattr(
@@ -448,7 +448,7 @@ def test_research_narration_without_tools_is_held_and_nudged(
     store.sessions["s1"].update(phase="research", scheme_name="Tata Pankh")
     monkeypatch.setattr(
         research_tools,
-        "search",
+        "find",
         lambda s, q, prefer=None: [{"title": "Pankh", "url": PAGE_URL, "official": True}],
     )
     llm = FakeLLM(
@@ -487,7 +487,7 @@ def test_narration_after_a_search_is_nudged_too(
     store.sessions["s1"].update(phase="research", scheme_name="Tata Pankh")
     monkeypatch.setattr(
         research_tools,
-        "search",
+        "find",
         lambda s, q, prefer=None: [{"title": "Pankh", "url": PAGE_URL, "official": True}],
     )
     monkeypatch.setattr(

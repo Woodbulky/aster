@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # Screen reader (form filling): who reads a new page first. Groq ~1-2 s vs ~10-13 s on the
     # T4 (measured 2026-10-04); a rate-limited Groq falls through to the GPU at once.
     screen_reader_primary: Literal["gpu", "fallback"] = "fallback"
+    # Conversation turns (not documents): Groq ~2 s to first audio vs ~5 s on the T4 (PROGRESS).
+    brain_primary: Literal["gpu", "fallback"] = "fallback"
 
     # speech: Sarvam primary, Kaggle /asr as the STT fallback (no Bhashini credentials)
     sarvam_api_key: str = ""
@@ -53,6 +55,12 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     tavily_base_url: str = "https://api.tavily.com"
     search_timeout_s: float = 10.0
+    # Context.dev (docs.context.dev): search fallback after Tavily, and a browser scrape for pages
+    # our own fetch can't read (403s, JS-only pages, scanned PDFs). Empty key = off.
+    context_dev_api_key: str = ""
+    context_dev_base_url: str = "https://api.context.dev/v1"
+    context_dev_max_age_ms: int = 604_800_000  # 7 days: the 180-day default is too old for rules
+    context_dev_timeout_s: float = 25.0
     fetch_timeout_s: float = 10.0  # per read
     fetch_total_s: float = 20.0  # whole download
     fetch_max_bytes: int = 5_000_000

@@ -1,6 +1,7 @@
-"""Per-document pipeline (VERIFICATION.md): download -> pages -> OCR lines -> extract -> validate ->
-field_values candidates. Runs as a background task after POST /documents; progress is the
-documents.status column (uploaded -> processing -> extracted | failed)."""
+"""Per-document pipeline (VERIFICATION.md): download -> file checks (integrity.py) -> pages -> OCR
+lines -> slot check (doctype.py) -> extract -> validate -> field_values candidates. Runs as a
+background task after POST /documents; progress is the documents.status column
+(uploaded -> processing -> extracted | failed)."""
 
 import asyncio
 import logging
@@ -14,8 +15,13 @@ from storage3.exceptions import StorageApiError
 from app.config import Settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable
-from app.verify import names
-from app.verify.checks import run_checks
+from app.verify import doctype, integrity, names
+from app.verify.checks import (
+    close_replaced_doc_flags,
+    raise_doc_flag,
+    run_checks,
+    type_trusted,
+)
 from app.verify.extraction import DOC_LABELS, EXPECTED, extract, field_label
 from app.verify.ocr import NO_VISION_FALLBACK, OcrUnavailable, Page, read_lines, render
 from app.verify.validator import KIND, check
@@ -97,6 +103,7 @@ async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[st
     doc_type = doc["doc_type"]
     bucket = db.storage.from_(repo.BUCKET)
     folder = doc["storage_path"].rsplit(".", 1)[0]  # <uid>/<sid>/<document_id>
+    data: bytes | None = None
     try:
         data = await _db(bucket.download, doc["storage_path"])
         pages = await _db(render, data, doc["mime"])
@@ -118,7 +125,38 @@ async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[st
         # Guardrail 6: the upload holds a full ID number; only the masked pages are kept.
         await _db(bucket.remove, [doc["storage_path"]])
 
-    items = await extract(s, doc_type, lines, user_id, session_id)
+    # The file itself (only the original upload has its metadata; a retry from masked pages
+    # was checked the first time) and its slot. Flags go in before the status flips.
+    found = integrity.signals(data, doc["mime"]) if data else []
+    flags = await _db(repo.list_flags, db, user_id, session_id)
+    trusted = type_trusted(flags, doc["id"])
+    await _db(close_replaced_doc_flags, db, user_id, session_id, doc)
+    checks: list[dict[str, str]] = []  # what the field_review card lists (UI text is English)
+    if found:
+        severity = "block" if any(x.severity == "block" for x in found) else "warn"
+        msg = integrity.message(found)
+        details = {"message": msg, "signals": [{"code": x.code, "detail": x.detail} for x in found]}
+        await _db(
+            raise_doc_flag, db, user_id, session_id, doc, "integrity_signal", severity, details
+        )
+        await _db(
+            repo.write_audit, db, user_id, session_id, "document.integrity",
+            {"document_id": doc["id"], "signals": [x.code for x in found]},
+        )  # fmt: skip
+        checks += [{"severity": x.severity, "text": integrity.TEXT[x.code]["en"].format(
+            detail=x.detail)} for x in found]  # fmt: skip
+    mismatch = None if trusted else doctype.check(doc_type, lines)
+    if mismatch:
+        # Guardrail 2 spirit: nothing from a file that may not be what its slot says.
+        details = {"message": doctype.message(doc_type, mismatch), "seen": mismatch.seen,
+                   "line_id": mismatch.line_id}  # fmt: skip
+        await _db(
+            raise_doc_flag, db, user_id, session_id, doc, "doc_type_mismatch", "block", details
+        )
+        checks.append({"severity": "block", "text": doctype.message(doc_type, mismatch)["en"]})
+        items = []
+    else:
+        items = await extract(s, doc_type, lines, user_id, session_id)
     by_id = {ln["id"]: ln for ln in lines}
     seen: set[str] = set()
     failed = []
@@ -129,8 +167,23 @@ async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[st
         if not c.ok:
             failed.append({"field_key": it.field_key, "reason": c.reason})
             continue
-        seen.add(it.field_key)
         cited = [by_id[i] for i in it.line_ids]
+        limit = (
+            None
+            if trusted or it.field_key != "annual_family_income"
+            else doctype.income_limit(" ".join(ln["text"] for ln in cited))
+        )
+        if limit:
+            # "below Rs 8,00,000" is an EWS / non-creamy-layer limit, not the family's income.
+            msg = {k: v.format(phrase=limit) for k, v in doctype.LIMIT_MESSAGE.items()}
+            details = {"message": msg, "line_ids": it.line_ids}
+            await _db(
+                raise_doc_flag, db, user_id, session_id, doc, "income_is_a_limit", "block", details
+            )
+            checks.append({"severity": "block", "text": msg["en"]})
+            failed.append({"field_key": it.field_key, "reason": "reads like a limit"})
+            continue
+        seen.add(it.field_key)
         await _db(
             repo.add_field_value,
             db,
@@ -152,13 +205,14 @@ async def _run(s: Settings, db: Any, user_id: str, session_id: str, doc: dict[st
                 "status": "candidate",
             },
         )
-    missing = [k for k in EXPECTED.get(doc_type, ()) if k not in seen]
+    missing = [] if mismatch else [k for k in EXPECTED.get(doc_type, ()) if k not in seen]
     ocr = {
         "engine": engine,
         "pages": page_meta,
         "lines": lines,
         "failed": failed,
         "missing": missing,
+        "checks": checks,
     }
     # Flags are written before the status flips, so the client's "read" event sees them.
     try:
@@ -202,4 +256,5 @@ def review_payload(doc: dict[str, Any], fields: list[dict[str, Any]]) -> dict[st
             for f in own
         ],
         "unreadable": [field_label(x["field_key"]) for x in ocr.get("failed", [])],
+        "checks": ocr.get("checks", []),
     }

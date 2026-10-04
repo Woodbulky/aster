@@ -159,7 +159,7 @@ def test_demo_documents_raise_exactly_the_seeded_problems(mem: Mem) -> None:
         "Your profile",
         "Income certificate · L1",
     }
-    assert len(mem.evals) == 6  # every rule evaluated and logged
+    assert len(mem.evals) == 7  # every rule evaluated and logged
     assert {a for a, _ in mem.audit} == {"flag.raised"}
 
 
@@ -378,7 +378,7 @@ def test_field_value_needs_a_source() -> None:
 
 def test_rule_files_load_and_use_known_facts() -> None:
     rules = [r for rs in checks.rulesets() for r in rs.rules]
-    assert len(rules) == 6
+    assert len(rules) == 7
     assert all(set(r.message) == {"en", "hi", "mr"} for r in rules)
 
 

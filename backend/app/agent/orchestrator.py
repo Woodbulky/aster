@@ -16,12 +16,14 @@ from app.agent import phases
 from app.agent.answers import read_answers
 from app.agent.prompts import read, t
 from app.agent.tools import TOOLS, Card, Ctx, ToolResult, run_tool, schemas
+from app.agent.tools.forms import pack_for_name
 from app.agent.tools.profile import masked
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable, chat_stream
 from app.speech.stream import Speaker
-from app.verify.checks import flag_summary, propose_profile_update
+from app.verify.checks import flag_summary, propose_profile_update, reread_after
+from app.verify.pipeline import process_document
 from app.ws.protocol import (
     AgentState,
     AssistantDelta,
@@ -37,7 +39,10 @@ log = logging.getLogger(__name__)
 Send = Callable[[BaseModel], Awaitable[None]]
 MAX_TOOL_CALLS = 6
 MAX_RESEARCH_NUDGES = 2
-LOOKUPS = {"search_web", "fetch_url", "read_pdf"}  # same args -> same answer within a turn
+# Read-only: same args -> same answer within a turn, and safe to run side by side.
+LOOKUPS = {"research_scheme", "search_web", "fetch_url", "read_pdf"}
+READS = {"research_scheme", "fetch_url", "read_pdf"}  # tools that hand the model page text
+TOOL_LIMIT = "tool limit reached; answer with what you have"
 REPEAT_CALL = (
     "you already made this exact call this turn; use that result, change the query, "
     "or answer with what you have"
@@ -74,8 +79,8 @@ NO_TOOL_NUDGE = (
     "[system check] You said what you would do but called no tool, so nothing happened and the "
     "user has not seen your text. Call the next tool now. If the user named a different "
     "scholarship, call set_form with it first. Otherwise: get_knowledge_pack if the state has a "
-    "scheme_key; else search_web, or fetch_url / read_pdf on the most official result you "
-    "already found. Do not announce it; just call it."
+    "scheme_key; else research_scheme, or save_research on the pages you already read. Do not "
+    "announce it; just call it."
 )
 _CJK = re.compile(r"[⺀-㏿㐀-䶿一-鿿가-힯豈-﫿＀-￯]")
 
@@ -133,19 +138,36 @@ async def _db(fn: Callable[..., Any], *a: Any, **kw: Any) -> Any:
     return await asyncio.to_thread(fn, *a, **kw)
 
 
+async def _none() -> None:
+    return None
+
+
 async def sync_phase(ctx: Ctx, send: Send) -> bool:
-    """Move the session to the phase its DB state calls for. True if it changed."""
-    profile = await _db(repo.get_profile, ctx.db, ctx.user_id)
+    """Move the session to the phase its DB state calls for. True if it changed. next_phase moves
+    one step, so this repeats until it settles: a scheme whose research was reused from another
+    student goes choose_form -> research -> eligibility in one go."""
+    changed = False
+    for _ in range(3):  # at most choose_form -> research -> eligibility
+        if not await _sync_once(ctx, send):
+            break
+        changed = True
+    return changed
+
+
+async def _sync_once(ctx: Ctx, send: Send) -> bool:
     scheme = phases.scheme_of(ctx.session)
-    researched = bool(
-        scheme
-        and ctx.session["phase"] in ("research", "eligibility")
-        and await _db(repo.latest_research, ctx.db, ctx.user_id, ctx.session["id"], scheme)
+    sid, phase = ctx.session["id"], ctx.session["phase"]
+    profile, research, flags = await asyncio.gather(  # side by side, not one after another
+        _db(repo.get_profile, ctx.db, ctx.user_id),
+        _db(repo.latest_research, ctx.db, ctx.user_id, sid, scheme)
+        if scheme and phase in ("research", "eligibility")
+        else _none(),
+        _db(repo.list_flags, ctx.db, ctx.user_id, sid, "open")
+        if phase in ("verification", "ready")
+        else _none(),
     )
-    blocks = 0
-    if ctx.session["phase"] in ("verification", "ready"):
-        flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
-        blocks = sum(f["severity"] == "block" for f in flags)
+    researched = bool(research)
+    blocks = sum(f["severity"] == "block" for f in flags or [])
     new = phases.next_phase(ctx.session, profile, researched, blocks)
     old = ctx.session["phase"]
     if new == old:
@@ -176,9 +198,16 @@ def _scheme_line(session: dict[str, Any]) -> str:
 
 async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
     phase = ctx.session["phase"]
-    profile = await _db(repo.get_profile, ctx.db, ctx.user_id)
+    sid = ctx.session["id"]
+    flag_phase = phase in ("documents", "verification", "ready")
+    # One round trip for everything the prompt needs (they were ~4 calls in a row).
+    profile, pending, flags, read_pages = await asyncio.gather(
+        _db(repo.get_profile, ctx.db, ctx.user_id),
+        _db(repo.latest_pending_proposal, ctx.db, ctx.user_id, sid),
+        _db(repo.list_flags, ctx.db, ctx.user_id, sid, "open") if flag_phase else _none(),
+        _db(repo.list_fetched, ctx.db, ctx.user_id, sid) if phase == "research" else _none(),
+    )
     missing = phases.missing_core(profile)
-    pending = await _db(repo.latest_pending_proposal, ctx.db, ctx.user_id, ctx.session["id"])
     state = [
         f"Saved profile (masked): {json.dumps(masked(profile), ensure_ascii=False, default=str)}",
         f"Chosen scholarship: {_scheme_line(ctx.session)}",
@@ -190,10 +219,17 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
         # masked: a proposal from a resolved caste flag must not hand the model the value
         waiting = json.dumps(masked(pending["updates"]), ensure_ascii=False)
         state.append(f"Card waiting for the user to confirm: {waiting}")
-    if phase in ("documents", "verification", "ready"):
+    if read_pages:
+        # The tool calls are not in the history: without this the model searched again for pages
+        # it had read in an earlier turn.
+        pages = [{"url": p["url"], "content_id": p["id"]} for p in read_pages[-6:]]
+        state.append(
+            "Pages already read this session (use their content_id in save_research): "
+            + json.dumps(pages, ensure_ascii=False)
+        )
+    if flag_phase:
         # The model invented problems that were never flagged (seen live: a "father's name"
         # mismatch, then the same reply on a loop). It only gets the real list.
-        flags = await _db(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
         open_ = json.dumps([flag_summary(f) for f in flags], ensure_ascii=False)
         state.append(f"Open flags (the only problems; their cards are on screen): {open_}")
         # Seen live: "You're good to go!" with a blocking flag still open.
@@ -261,7 +297,16 @@ async def _complete(
     text: list[str] = []
     calls: dict[int, dict[str, Any]] = {}
     provider = ""
-    async for ch in chat_stream(s, msgs, tools=tools, temperature=0.3, max_tokens=REPLY_MAX_TOKENS):
+    # Conversation goes to settings.brain_primary first (Groq ~2 s vs ~5 s on the T4); document
+    # calls keep LLM_PRIMARY's order (they pass sensitive_kind, never through here).
+    async for ch in chat_stream(
+        s,
+        msgs,
+        tools=tools,
+        prefer=s.brain_primary,
+        temperature=0.3,
+        max_tokens=REPLY_MAX_TOKENS,
+    ):
         provider = ch.provider
         if c := strip_cjk(ch.delta.get("content") or ""):
             text.append(c)
@@ -311,8 +356,24 @@ async def run_tool_ui(
         },
     )
     if name == "resolve_flag" and res.ok:
-        await offer_profile_update(ctx, send, json.loads(args)["flag_id"])
+        flag_id = json.loads(args)["flag_id"]
+        await offer_profile_update(ctx, send, flag_id)
+        await reread_document(ctx, flag_id)
     return res
+
+
+_rereads: set[asyncio.Task] = set()  # keep a reference: the loop holds tasks only weakly
+
+
+async def reread_document(ctx: Ctx, flag_id: str) -> None:
+    """Answered in words that the document IS right: read it again in the background (the open
+    conversation hears when it is done, like any upload)."""
+    flag = await _db(repo.get_flag, ctx.db, ctx.user_id, flag_id)
+    if flag and (doc_id := reread_after(flag)):
+        job = process_document(get_settings(), ctx.user_id, ctx.session["id"], doc_id)
+        task = asyncio.create_task(job)
+        _rereads.add(task)
+        task.add_done_callback(_rereads.discard)
 
 
 async def offer_profile_update(ctx: Ctx, send: Send, flag_id: str) -> None:
@@ -392,6 +453,52 @@ async def _apply_answers(s: Settings, ctx: Ctx, send: Send, user_text: str) -> b
     return bool(saved)
 
 
+# "I'm done uploading", "check everything", "सगळं तपासा", "सब जाँच लो": run the checks in code.
+_DONE_UPLOADING = re.compile(
+    r"\b(done|finished|that'?s all|check (it )?(all|everything))\b|झाले|झालं|संपल|सगळं तपास|सर्व तपास"
+    r"|हो गया|हो गए|सब (जाँच|जांच|चेक)",
+    re.IGNORECASE,
+)
+
+
+def _as_tool_call(name: str, args: dict[str, Any], res: ToolResult) -> list[dict[str, Any]]:
+    """A tool run by code, written into the request like the model's own call."""
+    cid = f"code_{name}"
+    call = {
+        "id": cid,
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(args)},
+    }
+    return [
+        {"role": "assistant", "content": None, "tool_calls": [call]},
+        {"role": "tool", "tool_call_id": cid, "content": _tool_content(res)},
+    ]
+
+
+async def _fast_path(ctx: Ctx, send: Send, user_text: str) -> list[dict[str, Any]]:
+    """Obvious intents run in code before the LLM (one round fewer, and no wrong pick): a scheme
+    named clearly in choose_form, or "I'm done uploading" in documents. -> the tool messages."""
+    phase = ctx.session["phase"]
+    out: list[dict[str, Any]] = []
+    if phase == "choose_form" and (key := pack_for_name(user_text)):
+        res = await run_tool_ui(ctx, send, "set_form", {"scheme_key": key})
+        out += _as_tool_call("set_form", {"scheme_key": key}, res)
+        if res.ok:  # a pack scheme: its verified rules load at once too
+            await sync_phase(ctx, send)
+            pack = await run_tool_ui(ctx, send, "get_knowledge_pack", {})
+            out += _as_tool_call("get_knowledge_pack", {}, pack)
+    elif (
+        phase in ("documents", "verification")
+        and len(user_text.split()) <= 8
+        and _DONE_UPLOADING.search(user_text)
+    ):
+        res = await run_tool_ui(ctx, send, "run_verification", {})
+        out += _as_tool_call("run_verification", {}, res)
+        if res.ok:
+            await show_new_flag_cards(ctx, send)
+    return out
+
+
 def _tool_content(res: ToolResult) -> str:
     body = res.model_dump(exclude={"card"}, exclude_none=True)
     if res.card:
@@ -448,10 +555,19 @@ async def run_turn(
     if user_text is not None and ctx.session["phase"] in FLAG_PHASES:
         if await _apply_answers(s, ctx, send, user_text):
             changed = await sync_phase(ctx, send) or changed
-    rows = await _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], HISTORY)
+    done_in_code: list[dict[str, Any]] = []
+    if user_text is not None:
+        done_in_code = await _fast_path(ctx, send, user_text)
+        if done_in_code:
+            changed = await sync_phase(ctx, send) or changed
+    rows, system = await asyncio.gather(
+        _db(repo.list_messages, ctx.db, ctx.user_id, ctx.session["id"], HISTORY),
+        _system_prompt(ctx, assistant_name),
+    )
     msgs: list[dict[str, Any]] = [
-        {"role": "system", "content": await _system_prompt(ctx, assistant_name)},
+        {"role": "system", "content": system},
         *_with_lang_note(_history(rows), rows, ctx.lang),
+        *done_in_code,  # the model sees what code already did this turn, as its own tool calls
     ]
     message_id = str(uuid.uuid4())
     speaker = speaker_factory(message_id) if speaker_factory else None
@@ -558,23 +674,36 @@ async def run_turn(
                     ],
                 }
             )
+            # Every call is checked first, in order (the cap, repeats); then the ones to run.
+            todo: list[tuple[dict[str, Any], ToolResult | None]] = []
             for c in tool_calls:
                 calls += 1
                 bonus = save_bonus and c["name"] == "save_research"
                 save_bonus = save_bonus and not bonus
                 key = (c["name"], c["arguments"] or "{}")
                 if calls > MAX_TOOL_CALLS and not bonus:
-                    res = ToolResult(
-                        ok=False, error="tool limit reached; answer with what you have"
-                    )
+                    todo.append((c, ToolResult(ok=False, error=TOOL_LIMIT)))
                 elif key in seen and c["name"] in LOOKUPS:
                     # Seen live: the same search_web 5× in one turn, then the LLM call failed.
-                    res = ToolResult(ok=False, error=REPEAT_CALL)
+                    todo.append((c, ToolResult(ok=False, error=REPEAT_CALL)))
                 else:
                     seen.add(key)
-                    res = await run_tool_ui(ctx, send, c["name"], c["arguments"])
+                    todo.append((c, None))
+            run = [c for c, res in todo if res is None]
+            ran: dict[str, ToolResult] = {}
+            if len(run) > 1 and all(c["name"] in LOOKUPS for c in run):
+                # Read-only lookups side by side: three pages take as long as the slowest one.
+                done = await asyncio.gather(
+                    *(run_tool_ui(ctx, send, c["name"], c["arguments"]) for c in run)
+                )
+                ran = {c["id"]: res for c, res in zip(run, done, strict=True)}
+            for c, res in todo:
+                if res is None:
+                    res = ran.get(c["id"]) or await run_tool_ui(
+                        ctx, send, c["name"], c["arguments"]
+                    )
                     card_sent = card_sent or res.card is not None
-                    read_pages = read_pages or (res.ok and c["name"] in ("fetch_url", "read_pdf"))
+                    read_pages = read_pages or (res.ok and c["name"] in READS)
                     saved = saved or (res.ok and c["name"] == "save_research")
                 msgs.append(
                     {"role": "tool", "tool_call_id": c["id"], "content": _tool_content(res)}

@@ -16,7 +16,7 @@ from app.verify import names
 from app.verify.contradictions import best, canon, disagreements, effective, name_match_min, same
 from app.verify.extraction import DOC_LABELS, field_label
 from app.verify.rules_engine import evaluate, variables
-from app.verify.validator import KIND, parse_date
+from app.verify.validator import DEV_DIGITS, KIND, parse_date
 
 Row = dict[str, Any]
 RULES_DIR = Path(__file__).parent / "rules"
@@ -225,9 +225,11 @@ def _lookup(path: str, data: Row) -> Any:
 
 
 def _signature(flag: Row) -> list[str]:
-    return sorted(
-        {canon(c["field_key"], c["value"]) for c in flag["details"].get("candidates", [])}
-    )
+    """What the flag is about: its values, and for a document check the document itself (so a
+    newly uploaded file with the same problem is asked about again)."""
+    d = flag["details"]
+    doc = [f"doc:{d['document_id']}"] if d.get("document_id") else []
+    return doc + sorted({canon(c["field_key"], c["value"]) for c in d.get("candidates", [])})
 
 
 def _save_flag(db: Client, uid: str, sid: str, existing: list[Row], flag: Row) -> Row | None:
@@ -268,6 +270,68 @@ def _load(
     return live, {d["id"]: d for d in docs}, eff, firm
 
 
+# ---------- document checks (doctype.py, integrity.py): about a file, not a value ----------
+# Answered with a reason only (no value to pick or type). Acknowledging a "might not be the right
+# document" check means "it is, read it": the pipeline reads it again, trusting its type.
+DOC_CHECKS = ("doc_type_mismatch", "income_is_a_limit", "integrity_signal")
+REREAD_CHECKS = ("doc_type_mismatch", "income_is_a_limit")
+
+
+def raise_doc_flag(
+    db: Client, uid: str, sid: str, doc: Row, reason_code: str, severity: str, details: Row
+) -> Row | None:
+    """A flag about one uploaded document (field_key = its slot). -> the new flag, or None."""
+    flag = {
+        "type": "rule",
+        "severity": severity,
+        "field_key": doc["doc_type"],
+        "reason_code": reason_code,
+        "details": {
+            "field_label": DOC_LABELS.get(doc["doc_type"], doc["doc_type"]),
+            "document_id": doc["id"],
+            "candidates": [],
+            "candidate_ids": [],
+            **details,
+        },
+    }
+    row = _save_flag(db, uid, sid, repo.list_flags(db, uid, sid), flag)
+    if row:
+        payload = {"flag_id": row["id"], "type": "rule", "reason_code": reason_code}
+        repo.write_audit(db, uid, sid, "flag.raised", payload | {"field_key": doc["doc_type"]})
+    return row
+
+
+def close_replaced_doc_flags(db: Client, uid: str, sid: str, doc: Row) -> None:
+    """A newer upload in the same slot closes the checks raised on the file it replaced."""
+    for f in repo.list_flags(db, uid, sid, "open"):
+        d = f["details"]
+        if (
+            f["reason_code"] in DOC_CHECKS
+            and f["field_key"] == doc["doc_type"]
+            and d.get("document_id") not in (None, doc["id"])
+        ):
+            resolution = {"by": "system", "reason": "document replaced"}
+            repo.update_flag(db, uid, f["id"], {"status": "resolved", "resolution": resolution})
+            repo.write_audit(db, uid, sid, "flag.resolved", {"flag_id": f["id"], "by": "system"})
+
+
+def type_trusted(flags: list[Row], doc_id: str) -> bool:
+    """The student answered a "might not be the right document" check for this file."""
+    return any(
+        f["reason_code"] in REREAD_CHECKS
+        and f["status"] != "open"
+        and f["details"].get("document_id") == doc_id
+        for f in flags
+    )
+
+
+def reread_after(flag: Row) -> str | None:
+    """-> the document to read again after this answer, or None."""
+    if flag.get("reason_code") in REREAD_CHECKS and flag.get("status") == "acknowledged":
+        return flag["details"].get("document_id")
+    return None
+
+
 def readiness(db: Client, user_id: str, session: Row) -> Row:
     """The readiness card: every value the form will use, with its source, and what still blocks.
     Ready = no open blocking flag (acknowledged ones are listed with the user's reason)."""
@@ -282,7 +346,9 @@ def readiness(db: Client, user_id: str, session: Row) -> Row:
                 {
                     "field_key": key,
                     "label": field_label(key),
-                    "value": b["value"],
+                    # Portals take English digits (seen live: "२५२६/२०२५" read off a Marathi
+                    # income certificate went to the portal as is).
+                    "value": str(b["value"]).translate(DEV_DIGITS),
                     "source": v["label"],
                     "confirmed": b["status"] == "confirmed",
                 }
@@ -466,6 +532,8 @@ def resolve(
         raise ResolveError("the typed value is empty")
     if flag["type"] == "missing_doc" and (candidate_id or value):
         raise ResolveError("a missing document can only be acknowledged")
+    if flag["reason_code"] in DOC_CHECKS and (candidate_id or value):
+        raise ResolveError("a check on a document can only be answered with a reason")
 
     evidence = {"via": via, "message_id": message_id}
     resolution: Row = {"reason": reason, **evidence}
@@ -563,13 +631,15 @@ def flag_card(flag: Row, lang: str) -> tuple[str, Row]:
     d = flag["details"]
     msg = d.get("message") or {}
     cands = d.get("candidates", [])
+    doc_check = flag["reason_code"] in DOC_CHECKS  # about a file: answered with a reason only
     pickable = flag["type"] in ("contradiction", "low_confidence") or (
         flag["type"] == "rule" and flag["field_key"] == "full_name"
     )
     # A rule on a single value (12th year not after 10th) is fixed by typing the right value;
     # name rules are answered by picking a spelling (the bank holder rule is acknowledged).
-    typeable = flag["type"] in ("contradiction", "low_confidence") or (
-        flag["type"] == "rule" and KIND.get(flag["field_key"] or "") != "name"
+    typeable = not doc_check and (
+        flag["type"] in ("contradiction", "low_confidence")
+        or (flag["type"] == "rule" and KIND.get(flag["field_key"] or "") != "name")
     )
     return kind, {
         "flag_id": flag["id"],

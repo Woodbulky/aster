@@ -38,6 +38,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     "choose_form": ("get_profile", "list_supported_forms", *PICK),
     "research": (
         "get_knowledge_pack",
+        "research_scheme",
         "search_web",
         "fetch_url",
         "read_pdf",

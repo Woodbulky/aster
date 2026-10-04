@@ -1,6 +1,6 @@
 {
   "ruleset": "core",
-  "version": "2026.1",
+  "version": "2026.2",
   "rules": [
     {
       "id": "NAME_MISMATCH_ACROSS_DOCS",
@@ -60,6 +60,18 @@
         "en": "Your income certificate is more than a year old. Most schemes want the latest financial year's certificate.",
         "mr": "तुमचा उत्पन्न दाखला एक वर्षापेक्षा जुना आहे. बहुतेक योजनांना चालू आर्थिक वर्षाचा दाखला लागतो.",
         "hi": "आपका आय प्रमाणपत्र एक साल से ज़्यादा पुराना है। ज़्यादातर योजनाएँ ताज़ा वित्तीय वर्ष का प्रमाणपत्र माँगती हैं।"
+      }
+    },
+    {
+      "id": "INCOME_CERT_DATE_IN_FUTURE",
+      "severity": "block",
+      "reason_code": "income_cert_future_date",
+      "field_key": "income_cert_issue_date",
+      "logic": { "<": [{ "var": "computed.income_cert_age_days" }, 0] },
+      "message": {
+        "en": "The issue date on your income certificate is in the future. It may have been read wrong: check the date on the certificate and type the right one.",
+        "mr": "तुमच्या उत्पन्न दाखल्यावरील दिनांक भविष्यातील आहे. तो चुकीचा वाचला गेला असू शकतो: दाखल्यावरील दिनांक तपासा आणि योग्य दिनांक लिहा.",
+        "hi": "आपके आय प्रमाणपत्र पर जारी होने की तारीख़ भविष्य की है। हो सकता है वह ग़लत पढ़ी गई हो: प्रमाणपत्र पर तारीख़ देखिए और सही तारीख़ लिखिए।"
       }
     },
     {
