@@ -234,9 +234,20 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
         state.append(f"Open flags (the only problems; their cards are on screen): {open_}")
         # Seen live: "You're good to go!" with a blocking flag still open.
         blocks = sum(f["severity"] == "block" for f in flags)
+        if phase == "documents":
+            # Seen live: no open flags here read as "your form is ready" (even "already filled"),
+            # though the documents were never checked together.
+            state.append(
+                "Form ready: NO (the documents are not checked together yet: run_verification "
+                "does that when the user is done uploading or wants to fill the form)."
+            )
+        else:
+            state.append(
+                f"Form ready: {'NO' if blocks else 'yes'} ({blocks} blocking flag(s) open)."
+            )
         state.append(
-            f"Form ready: {'NO' if blocks else 'yes'} ({blocks} blocking flag(s) open). Never say "
-            "the documents or the form are ready while this says NO."
+            "Never say the documents or the form are ready while this says NO. Aster never fills "
+            "the portal: never say the form is filled or submitted."
         )
     base = (
         read("system")
@@ -453,10 +464,12 @@ async def _apply_answers(s: Settings, ctx: Ctx, send: Send, user_text: str) -> b
     return bool(saved)
 
 
-# "I'm done uploading", "check everything", "सगळं तपासा", "सब जाँच लो": run the checks in code.
+# "I'm done uploading", "check everything", "सगळं तपासा", "सब जाँच लो", "let's fill the form":
+# run the checks in code (filling starts from ready, after them).
 _DONE_UPLOADING = re.compile(
     r"\b(done|finished|that'?s all|check (it )?(all|everything))\b|झाले|झालं|संपल|सगळं तपास|सर्व तपास"
-    r"|हो गया|हो गए|सब (जाँच|जांच|चेक)",
+    r"|हो गया|हो गए|सब (जाँच|जांच|चेक)"
+    r"|\b(fill(ing)? (the |my )?form|form fill(ing)?|start filling)\b|फॉर्म भर",
     re.IGNORECASE,
 )
 

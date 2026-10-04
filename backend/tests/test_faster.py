@@ -391,7 +391,10 @@ def test_lookups_in_one_round_run_side_by_side(
     ]
 
 
-@pytest.mark.parametrize("said", ["I'm done uploading", "सगळं तपासा", "हो गया, सब चेक करो", "done"])
+@pytest.mark.parametrize(
+    "said",
+    ["I'm done uploading", "सगळं तपासा", "हो गया, सब चेक करो", "done", "yes lets start form filling"],
+)
 def test_done_uploading_runs_the_checks_in_code(
     store: FakeStore, run, monkeypatch: pytest.MonkeyPatch, said: str
 ) -> None:
@@ -498,3 +501,14 @@ def test_thinking_is_sent_before_any_db_write(
     assert first.type == "agent_state" and first.state == "thinking"
     user = [m for m in store.messages if m["role"] == "user"]
     assert user[0]["content"] == "hello"  # still stored, with its id kept for the turn
+
+
+def test_documents_phase_never_tells_the_model_the_form_is_ready(
+    store: FakeStore, run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store.sessions["s1"].update(phase="documents", scheme_key="demo.obc_aid")
+    monkeypatch.setattr(repo, "list_flags", lambda *a, **k: [])
+    llm = FakeLLM(text("Upload the rest when you can."))
+    run(llm, user_text="what is left?")
+    system = llm.calls[0]["messages"][0]["content"]
+    assert "Form ready: NO" in system and "Form ready: yes" not in system  # no flags open
