@@ -1,13 +1,42 @@
 "use client";
 
-import { Check, FolderOpen, Save } from "lucide-react";
+import { Check, FolderOpen, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import { CompanionPicker } from "@/components/profile/CompanionPicker";
-import { completion, ProfileFields, SECTIONS } from "@/components/profile/ProfileForm";
+import { completion, type FieldSource, ProfileFields, SECTIONS } from "@/components/profile/ProfileForm";
 import { initials, useShell } from "@/components/shell/AppShell";
-import { type AssistantSettings, type ProfileDraft, putAssistant, putProfile, useAssistant } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
+import {
+  api,
+  type AssistantSettings,
+  clearLocalCache,
+  type ProfileDraft,
+  type ProfileKey,
+  putAssistant,
+  putProfile,
+  useAssistant,
+} from "@/lib/api";
+import { createClient } from "@/lib/supabase/client";
+
+type Sources = Partial<Record<ProfileKey, FieldSource & { value: string }>>;
+
+/** Saved values + where each came from (RLS reads). */
+async function loadSources(): Promise<Sources> {
+  const sb = createClient();
+  const [{ data: profile }, { data: rows }] = await Promise.all([
+    sb.from("profiles").select("*").maybeSingle(),
+    sb.from("profile_field_sources").select("field_key, source_type, confirmed_at"),
+  ]);
+  const out: Sources = {};
+  for (const r of rows ?? []) {
+    const v = (profile as Record<string, unknown> | null)?.[r.field_key];
+    if (v !== null && v !== undefined) out[r.field_key as ProfileKey] = { ...r, value: String(v) };
+  }
+  return out;
+}
 
 export default function ProfilePage() {
   const { profile, user } = useShell();
@@ -25,6 +54,7 @@ export default function ProfilePage() {
         <div className="flex flex-col gap-6">
           <ProfileEditor initial={profile ?? (user?.name ? { full_name: user.name } : {})} />
           <CompanionEditor initial={assistant} />
+          <DeleteData />
         </div>
       </div>
     </div>
@@ -88,6 +118,11 @@ function SavedNote({ show }: { show: boolean | string }) {
 function ProfileEditor({ initial }: { initial: ProfileDraft }) {
   const [draft, setDraft] = useState(initial);
   const [saved, setSaved] = useState<boolean | string>(false);
+  const [sources, setSources] = useState<Sources>({});
+  const refresh = useCallback(() => {
+    loadSources().then(setSources, () => setSources({}));
+  }, []);
+  useEffect(refresh, [refresh]);
   return (
     <form
       onSubmit={async (e) => {
@@ -95,6 +130,7 @@ function ProfileEditor({ initial }: { initial: ProfileDraft }) {
         try {
           await putProfile(draft);
           setSaved(true);
+          refresh();
         } catch (err) {
           setSaved((err as Error).message);
         }
@@ -108,6 +144,7 @@ function ProfileEditor({ initial }: { initial: ProfileDraft }) {
           <ProfileFields
             section={s.id}
             value={draft}
+            sources={sources}
             onChange={(d) => {
               setDraft(d);
               setSaved(false);
@@ -156,6 +193,68 @@ function CompanionEditor({ initial }: { initial: AssistantSettings }) {
           <Save className="size-4" /> Save companion
         </button>
       </div>
+    </section>
+  );
+}
+
+/** Delete my data: every file and row, then the account itself (backend DELETE /api/me). */
+function DeleteData() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [state, setState] = useState<"idle" | "deleting" | string>("idle");
+  async function remove() {
+    setState("deleting");
+    try {
+      await api("DELETE", "/api/me");
+    } catch {
+      setState("Nothing was deleted. Check your connection and try again.");
+      return;
+    }
+    clearLocalCache();
+    await createClient().auth.signOut().catch(() => {}); // the account is already gone
+    router.replace("/");
+  }
+  return (
+    <section aria-labelledby="delete-title" className="card border-destructive/30 p-6 sm:p-8">
+      <h2 id="delete-title" className="text-lg font-bold">
+        Delete my data
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Removes your profile, documents, conversations, applications and audit trail, then your account. This can&apos;t be undone.
+      </p>
+      <button type="button" onClick={() => setOpen(true)} className="btn-subtle mt-5 text-destructive">
+        <Trash2 className="size-4" /> Delete everything
+      </button>
+      {open && (
+        <Modal title="Delete all your data?" subtitle="Your account is deleted too. You can sign up again later." onClose={() => setOpen(false)} className="max-w-md">
+          <form
+            className="flex flex-col gap-4 px-6 py-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (typed === "DELETE") remove();
+            }}
+          >
+            <label htmlFor="confirm-delete" className="text-sm">
+              Type <strong>DELETE</strong> to confirm
+            </label>
+            <input id="confirm-delete" value={typed} onChange={(e) => setTyped(e.target.value)} className="field" autoComplete="off" />
+            {state !== "idle" && state !== "deleting" && (
+              <p role="alert" className="text-sm text-destructive">
+                {state}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button type="button" className="btn-subtle" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" disabled={typed !== "DELETE" || state === "deleting"} className="btn-primary bg-destructive disabled:opacity-50">
+                {state === "deleting" ? "Deleting…" : "Delete my data"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }

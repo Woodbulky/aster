@@ -35,6 +35,8 @@ def api(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(repo, "upsert_assistant", rec("upsert_assistant", {"user_id": "u1"}))
     monkeypatch.setattr(repo, "update_profile", rec("update_profile", {"id": "u1"}))
     monkeypatch.setattr(repo, "create_session", rec("create_session", {"id": "s1"}))
+    monkeypatch.setattr(repo, "write_audit", rec("write_audit", None))
+    monkeypatch.setattr(repo, "latest_consent", lambda *_a: {"granted": True})
     app.dependency_overrides[get_db] = lambda: SimpleNamespace(
         auth=SimpleNamespace(get_user=get_user)
     )
@@ -105,6 +107,17 @@ def test_put_profile_casts_and_drops_blanks(api) -> None:
                     "hsc_percentage": 81.5,
                     "aadhaar_last4": "1234",
                 },
+            ),
+        ),
+        # an edit is audited with field names only (M8)
+        (
+            "write_audit",
+            (
+                "u1",
+                None,
+                "profile.edited",
+                {"fields": ["aadhaar_last4", "dob", "full_name", "hsc_percentage", "ssc_year"]},
+                "user",
             ),
         ),
     ]
@@ -267,4 +280,4 @@ def test_put_profile_skips_unchanged_fields(api, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(repo, "get_profile", lambda *_a: {"id": "u1", "full_name": "Asha Patil"})
     body = {"full_name": "Asha Patil", "district": "Pune"}
     assert c.put("/api/profile", json=body, headers=AUTH).status_code == 200
-    assert calls == [("update_profile", ("u1", {"district": "Pune"}))]
+    assert calls[0] == ("update_profile", ("u1", {"district": "Pune"}))

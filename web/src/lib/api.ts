@@ -60,6 +60,48 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   return res.json() as Promise<T>;
 }
 
+export type ConsentScope = "documents" | "sensitive_profile";
+let askConsent: ((scope: ConsentScope) => Promise<boolean>) | null = null;
+
+/** The consent screen (ConsentHost in the app shell) registers itself here. */
+export function setConsentAsker(f: typeof askConsent) {
+  askConsent = f;
+}
+
+/** True once the user has agreed to `scope`: their latest answer (RLS read), else the consent
+ * screen. The answer is recorded either way. The backend checks it again (403 consent_required). */
+export async function ensureConsent(scope: ConsentScope): Promise<boolean> {
+  const { data } = await createClient()
+    .from("consents")
+    .select("granted")
+    .eq("scope", scope)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (data?.granted) return true;
+  if (!askConsent) return false;
+  const granted = await askConsent(scope);
+  await api("POST", "/api/consents", { scope, granted });
+  return granted;
+}
+
+/** Runs a backend call; on `consent_required:<scope>` asks once and retries. */
+async function withConsent<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    const scope = /^consent_required:(\w+)$/.exec((e as Error).message)?.[1] as ConsentScope | undefined;
+    if (!scope) throw e;
+    if (!(await ensureConsent(scope))) throw new Error(NO_CONSENT[scope]);
+    return call();
+  }
+}
+
+export const NO_CONSENT: Record<ConsentScope, string> = {
+  documents: "Aster reads documents only after you agree. Upload again when you're ready.",
+  sensitive_profile: "Caste and religion are saved only after you agree. Clear them to save the rest.",
+};
+
 /** Saves locally first (the UI never waits on a sleeping server), then to the backend. */
 export async function putAssistant(settings: AssistantSettings): Promise<void> {
   writeLocal(ASSISTANT_KEY, JSON.stringify(settings));
@@ -73,7 +115,7 @@ export function useAssistant(): AssistantSettings {
 
 export async function putProfile(profile: ProfileDraft): Promise<void> {
   writeLocal(PROFILE_KEY, JSON.stringify(profile));
-  await api("PUT", "/api/profile", profile);
+  await withConsent(() => api("PUT", "/api/profile", profile));
 }
 
 /** `undefined` before hydration, `null` when the user has never saved a profile. */
@@ -116,11 +158,13 @@ export async function confirmProfile(
   accept: boolean,
   edits?: ProfileDraft,
 ): Promise<ProfileDraft> {
-  const res = await api<{ saved: Record<string, unknown> }>("POST", "/api/profile/confirm", {
-    proposal_id: proposalId,
-    accept,
-    edits,
-  });
+  const res = await withConsent(() =>
+    api<{ saved: Record<string, unknown> }>("POST", "/api/profile/confirm", {
+      proposal_id: proposalId,
+      accept,
+      edits,
+    }),
+  );
   const saved = Object.fromEntries(Object.entries(res.saved).map(([k, v]) => [k, String(v)])) as ProfileDraft;
   if (Object.keys(saved).length) {
     const current = parse<ProfileDraft>(readLocal(PROFILE_KEY)) ?? {};

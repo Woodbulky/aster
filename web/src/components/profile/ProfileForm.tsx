@@ -72,16 +72,38 @@ export function completion(p: ProfileDraft | null | undefined): number {
   return Math.round((ALL_FIELDS.filter((f) => p[f.key]?.trim()).length / ALL_FIELDS.length) * 100);
 }
 
+export type FieldSource = { source_type: string; confirmed_at: string };
+const SOURCE_TEXT: Record<string, string> = {
+  manual: "Typed by you",
+  text: "From your chat",
+  voice: "Said to Aster",
+  document: "From your document",
+  aadhaar_qr: "From Aadhaar QR",
+};
+
+/** Where a saved value came from (guardrail 2), e.g. "From your document · 4 Oct". */
+function SourceChip({ src }: { src: FieldSource }) {
+  const when = new Date(src.confirmed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return (
+    <span className="chip ml-auto text-xs font-normal text-muted-foreground">
+      {SOURCE_TEXT[src.source_type] ?? src.source_type} · {when}
+    </span>
+  );
+}
+
 export function ProfileFields({
   section,
   value,
   onChange,
   readOnly,
+  sources,
 }: {
   section: SectionId;
   value: ProfileDraft;
   onChange: (next: ProfileDraft) => void;
   readOnly?: boolean;
+  /** Saved sources per field; a chip shows next to fields still holding their saved value. */
+  sources?: Partial<Record<ProfileKey, FieldSource & { value: string }>>;
 }) {
   const fields: readonly Field[] = SECTIONS.find((s) => s.id === section)!.fields;
   return (
@@ -92,9 +114,12 @@ export function ProfileFields({
         const set = (x: string) => onChange({ ...value, [f.key]: x });
         return (
           <div key={f.key} className={cn("flex flex-col gap-1.5", f.wide && "sm:col-span-2")}>
-            <label htmlFor={id} className="text-sm font-medium">
-              {f.label}
-            </label>
+            <div className="flex items-center gap-2">
+              <label htmlFor={id} className="text-sm font-medium">
+                {f.label}
+              </label>
+              {sources?.[f.key] && sources[f.key]!.value === v && v !== "" && <SourceChip src={sources[f.key]!} />}
+            </div>
             {f.type === "select" ? (
               <select id={id} value={v} disabled={readOnly} onChange={(e) => set(e.target.value)} className="field disabled:bg-muted">
                 <option value="">Select…</option>

@@ -51,7 +51,7 @@ mic → VAD end → WS binary (webm/opus) → STT router → transcript event �
 - CORS is limited to `ALLOWED_ORIGINS`.
 - Storage bucket `documents` is private. Path is `{user_id}/{session_id}/{document_id}.{ext}`. The backend reads with the service key; the web uses signed URLs.
 - `GATEWAY_TOKEN` lives only in the backend env and in Kaggle Secrets.
-- Audit events are hash-chained per session (DB trigger).
+- Audit events are hash-chained per (session, user) by a DB trigger; inserts into one chain are serialised (advisory lock, ids taken after it, migrations 0005/0006). `uv run python -m app.audit` recomputes every hash.
 - Rate limit WS messages per user (e.g. 30/min) and uploads (20/session).
 
 ## Environments

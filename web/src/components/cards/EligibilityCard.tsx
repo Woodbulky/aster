@@ -45,10 +45,10 @@ export function EligibilityCard({ payload, onContinue }: { payload: EligibilityP
   const c = payload.counts;
   return (
     <section aria-label={`Eligibility check: ${payload.name}`} className="card max-w-xl p-5">
-      <h3 className="flex items-start gap-2 font-heading font-semibold">
+      <h2 className="flex items-start gap-2 font-heading font-semibold">
         <ListChecks className="mt-0.5 size-5 shrink-0 text-primary" />
         <span>{payload.name}</span>
-      </h3>
+      </h2>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {payload.origin === "live" && <span className="chip bg-butter">Unverified · from the web</span>}
         {payload.draft && <span className="chip bg-peach">Draft rules · not yet verified</span>}

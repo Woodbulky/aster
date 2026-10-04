@@ -51,9 +51,9 @@ export function FieldReviewCard({ payload }: { payload: FieldReviewPayload }) {
   const page = open ? payload.pages[open.source.page] : null;
   return (
     <section aria-label={`Values read from your ${payload.label}`} className="card max-w-xl p-5">
-      <h3 className="flex items-start gap-2 font-heading font-semibold">
+      <h2 className="flex items-start gap-2 font-heading font-semibold">
         <ScanText className="mt-0.5 size-5 shrink-0 text-primary" /> Read from your {payload.label}
-      </h3>
+      </h2>
       {payload.engine === "vision_llm" && <p className="mt-1 text-xs text-muted-foreground">Read by AI from the photo — please check each value.</p>}
       <ul className="mt-3 divide-y divide-border">
         {payload.fields.map((f) => (

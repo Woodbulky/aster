@@ -1,11 +1,12 @@
 "use client";
 
-import { FolderOpen, House, LogOut, Menu, MessageCircle, UserRound, X } from "lucide-react";
+import { FolderOpen, History, House, LogOut, Menu, MessageCircle, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 import { AsterMark, Avatar } from "@/components/avatar/Avatar";
+import { ConsentHost } from "@/components/consent/ConsentHost";
 import { ProfileSetup } from "@/components/profile/ProfileSetup";
 import { completion } from "@/components/profile/ProfileForm";
 import { clearLocalCache, loadMe, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
@@ -70,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { href: "/home", label: "Home", icon: House },
     { href: "/chat", label: `Talk to ${assistant.assistant_name}`, icon: MessageCircle },
     { href: "/documents", label: "My documents", icon: FolderOpen },
+    { href: "/sessions", label: "My applications", icon: History },
     { href: "/profile", label: "My profile", icon: UserRound },
   ];
   const title = nav.find((n) => path.startsWith(n.href))?.label ?? "";
@@ -180,10 +182,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               {initials(displayName)}
             </Link>
           </header>
-          <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+          <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
 
+      <ConsentHost />
       {showSetup && profile !== undefined && user && (
         <ProfileSetup
           startAt={setupStep ?? 0}

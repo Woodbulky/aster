@@ -89,6 +89,16 @@ class FakeStore:
         self.proposals.append({**row, **values})
         return self.proposals[-1]
 
+    def proposal_for_flag(self, _db, user_id, flag_id):
+        return next(
+            (
+                p
+                for p in self.proposals
+                if p["user_id"] == user_id and (p.get("source_ref") or {}).get("flag_id") == flag_id
+            ),
+            None,
+        )
+
     def get_pending_proposal(self, _db, user_id, proposal_id):
         return next(
             (
@@ -184,6 +194,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         "get_pending_proposal",
         "latest_pending_proposal",
         "set_proposal_status",
+        "proposal_for_flag",
         "write_audit",
         "add_fetched",
         "get_fetched",

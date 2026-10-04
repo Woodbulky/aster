@@ -115,7 +115,8 @@ export default function ChatSessionPage() {
         </div>
 
         {/* Messages / welcome */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* relative: keeps the cards' sr-only (absolute) inputs inside this scroller, not the page */}
+        <div className="relative min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-8 sm:px-8">
             {items.length === 0 ? (
               <div className="my-auto flex flex-col items-center text-center">
@@ -153,7 +154,10 @@ export default function ChatSessionPage() {
                 </div>
               </div>
             ) : (
-              <ol role="log" aria-label="Conversation" aria-live="polite" className="flex flex-col gap-8">
+              <>
+              <h1 className="sr-only">Conversation with {assistant.assistant_name}</h1>
+              <div role="log" aria-label="Conversation" aria-live="polite">
+              <ol className="flex flex-col gap-8">
                 {items.map((it, i) => {
                   if (it.kind === "card") {
                     const card = it.card;
@@ -209,6 +213,8 @@ export default function ChatSessionPage() {
                   );
                 })}
               </ol>
+              </div>
+              </>
             )}
             {busy && (
               <p role="status" className="mt-6 flex items-center gap-2 pl-12 text-sm text-muted-foreground">
@@ -224,6 +230,24 @@ export default function ChatSessionPage() {
           {(error || voice.micError) && (
             <p role="alert" className="mx-auto mb-2 max-w-3xl text-sm text-destructive">
               {voice.micError ?? error}
+            </p>
+          )}
+          {status === "denied" && (
+            <p role="alert" className="mx-auto mb-2 max-w-3xl text-sm">
+              This conversation can&apos;t be opened.{" "}
+              <Link href="/login" className="font-semibold text-primary underline">
+                Sign in again
+              </Link>{" "}
+              or{" "}
+              <Link href="/sessions" className="font-semibold text-primary underline">
+                pick another application
+              </Link>
+              .
+            </p>
+          )}
+          {status === "offline" && (
+            <p role="status" className="mx-auto mb-2 max-w-3xl text-sm text-muted-foreground">
+              Can&apos;t reach {assistant.assistant_name} right now. Reconnecting by itself; your conversation is saved.
             </p>
           )}
           <form
@@ -318,10 +342,11 @@ export default function ChatSessionPage() {
           </p>
         </div>
         <div className="flex flex-col gap-1">
-          <h3 className="mb-1 text-sm font-semibold">Shortcuts</h3>
+          <h2 className="mb-1 text-sm font-semibold">Shortcuts</h2>
           {[
             { href: "/profile", icon: UserRound, label: "My profile" },
             { href: "/documents", icon: FolderOpen, label: "My documents" },
+            { href: `/sessions/${sessionId}`, icon: ShieldCheck, label: "Audit trail" },
           ].map((s) => (
             <Link key={s.href} href={s.href} className="flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium hover:bg-sidebar-accent">
               <s.icon className="size-4 text-primary" /> {s.label} <ArrowRight className="ml-auto size-4 text-muted-foreground" />

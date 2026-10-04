@@ -15,7 +15,13 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
 from app.agent import screen
-from app.agent.orchestrator import run_tool_ui, run_turn, show_new_flag_cards, sync_phase
+from app.agent.orchestrator import (
+    offer_profile_update,
+    run_tool_ui,
+    run_turn,
+    show_new_flag_cards,
+    sync_phase,
+)
 from app.agent.tools import Ctx
 from app.config import Settings, get_settings
 from app.db import supabase as repo
@@ -457,6 +463,7 @@ async def _flag_resolved(ctx: Ctx, send, payload: dict, turn) -> None:
     flag = await asyncio.to_thread(repo.get_flag, ctx.db, ctx.user_id, flag_id)
     if not flag or flag["session_id"] != ctx.session["id"] or flag["status"] == "open":
         return await send(ErrorMsg(code="flag_not_resolved", message="flag not found or open"))
+    await offer_profile_update(ctx, send, flag_id)  # a tap answer, same as a spoken one
     left = await asyncio.to_thread(repo.list_flags, ctx.db, ctx.user_id, ctx.session["id"], "open")
     what = "picked a value" if flag["status"] == "resolved" else "acknowledged it"
     await turn(

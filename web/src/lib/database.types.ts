@@ -478,6 +478,7 @@ export type Database = {
           id: string
           message_id: string | null
           session_id: string | null
+          source_ref: Json
           status: string
           updates: Json
           user_id: string
@@ -488,6 +489,7 @@ export type Database = {
           id?: string
           message_id?: string | null
           session_id?: string | null
+          source_ref?: Json
           status?: string
           updates: Json
           user_id: string
@@ -498,6 +500,7 @@ export type Database = {
           id?: string
           message_id?: string | null
           session_id?: string | null
+          source_ref?: Json
           status?: string
           updates?: Json
           user_id?: string

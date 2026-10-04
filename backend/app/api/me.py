@@ -19,6 +19,9 @@ router = APIRouter(prefix="/api")
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 Lang = Literal["mr", "hi", "en"]
+ConsentScope = Literal["documents", "sensitive_profile"]
+CONSENT_VERSION = "2026-10-04"  # bump when the consent text in web/src/components/consent changes
+SENSITIVE_FIELDS = ("caste", "religion")
 
 
 class AssistantIn(BaseModel):
@@ -66,6 +69,42 @@ class ProfileIn(BaseModel):
         return None if isinstance(v, str) and not v.strip() else v
 
 
+def require_consent(db: Any, user_id: str, scope: str) -> None:
+    """Consent is checked in code, not only shown in the UI. The web catches this 403 and opens
+    the consent screen for `scope`."""
+    row = repo.latest_consent(db, user_id, scope)
+    if not row or not row["granted"]:
+        raise HTTPException(403, f"consent_required:{scope}")
+
+
+def _gate_sensitive(db: Any, user_id: str, values: dict[str, Any]) -> None:
+    if any(values.get(k) is not None for k in SENSITIVE_FIELDS):
+        require_consent(db, user_id, "sensitive_profile")
+
+
+class ConsentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: ConsentScope
+    granted: bool
+
+
+@router.post("/consents", status_code=201)
+def post_consent(body: ConsentIn, db: Db, user_id: UserId) -> dict[str, Any]:
+    """Append-only: the latest row per scope is the answer, earlier answers stay on record."""
+    values = body.model_dump() | {"explanation_version": CONSENT_VERSION}
+    row = repo.add_consent(db, user_id, values)
+    repo.write_audit(db, user_id, None, "consent.recorded", body.model_dump(), actor="user")
+    return row or {}
+
+
+@router.delete("/me")
+def delete_me(db: Db, user_id: UserId) -> dict[str, Any]:
+    """Delete my data: every stored file, then the account (all rows cascade, the audit trail
+    included). There is nothing left to audit it in."""
+    removed = repo.delete_user(db, user_id)
+    return {"deleted": True, "files": removed}
+
+
 @router.get("/me")
 def me(db: Db, user_id: UserId) -> dict[str, Any]:
     # profiles only ever holds aadhaar_last4, never a full number, so nothing more to mask.
@@ -87,9 +126,12 @@ def put_profile(body: ProfileIn, db: Db, user_id: UserId) -> dict[str, Any]:
     # conversation keep their text source + proposal link (guardrail 2).
     current = repo.get_profile(db, user_id) or {}
     values = {k: v for k, v in values.items() if current.get(k) != v}
+    _gate_sensitive(db, user_id, values)
     row = repo.update_profile(db, user_id, values, source_type="manual")
     if not row:
         raise HTTPException(404, "profile not found")
+    if values:  # an edit = a new confirmed value (manual) + an audit event, names only
+        repo.write_audit(db, user_id, None, "profile.edited", {"fields": sorted(values)}, "user")
     return row
 
 
@@ -125,7 +167,13 @@ def confirm_profile(body: ConfirmIn, db: Db, user_id: UserId) -> dict[str, Any]:
         raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     kept = {k: v for k, v in proposed.items() if k not in edited or edited[k] == v}
     changed = {k: v for k, v in edited.items() if v is not None and v != proposed.get(k)}
-    ref = {"proposal_id": prop["id"], "message_id": prop["message_id"]}
+    _gate_sensitive(db, user_id, kept | changed)
+    # A proposal from a resolved flag also points at the flag + its confirmed field value.
+    ref = {
+        **(prop.get("source_ref") or {}),
+        "proposal_id": prop["id"],
+        "message_id": prop["message_id"],
+    }
     repo.update_profile(db, user_id, kept, source_type=prop["evidence"], source_ref=ref)
     repo.update_profile(db, user_id, changed, source_type="manual", source_ref=ref)
     repo.set_proposal_status(db, user_id, prop["id"], "accepted")

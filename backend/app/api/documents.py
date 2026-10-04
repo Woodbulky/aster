@@ -1,12 +1,16 @@
 """Documents (VERIFICATION.md). The client uploads to Storage <uid>/<sid>/<document_id>.<ext>
 (storage RLS: own folder only), then calls this; all table writes stay on the backend."""
 
+import json
 from typing import Annotated, Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.me import require_consent
+from app.audit import fetch as fetch_audit
+from app.audit import verify_chain
 from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.deps import Db, UserId
@@ -46,6 +50,7 @@ def add_document(
     """Registers an uploaded file and starts the pipeline. Posting a failed document again
     retries it."""
     _session(db, user_id, session_id)
+    require_consent(db, user_id, "documents")  # before anything reads the file
     doc_id, sid = str(body.document_id), str(session_id)
     doc = repo.get_document(db, user_id, doc_id)
     if doc:
@@ -70,6 +75,48 @@ def add_document(
             },
         )
         repo.write_audit(db, user_id, sid, "document.uploaded", {"doc_type": body.doc_type}, "user")
+    tasks.add_task(process_document, s, user_id, sid, doc_id)
+    return {"document_id": doc_id, "status": "uploaded"}
+
+
+class VaultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    doc_type: Literal[DOC_TYPES]  # type: ignore[valid-type]
+
+
+@router.post("/documents/from-vault", status_code=202)
+def add_from_vault(
+    session_id: UUID,
+    body: VaultIn,
+    tasks: BackgroundTasks,
+    db: Db,
+    user_id: UserId,
+    s: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Reuses the file the user saved in their profile vault (<uid>/general/<type>/): copies it
+    into this session and starts the pipeline, so nothing is asked twice. 404 if none saved."""
+    _session(db, user_id, session_id)
+    require_consent(db, user_id, "documents")
+    sid, t = str(session_id), body.doc_type
+    if any(d["doc_type"] == t for d in repo.list_documents(db, user_id, sid)):
+        return {"status": "exists"}
+    bucket = db.storage.from_(repo.BUCKET)
+    folder = f"{user_id}/general/{t}"
+    files = [f for f in bucket.list(folder) if f.get("id")]
+    if not files:
+        raise HTTPException(404, "nothing saved for this document")
+    latest = max(files, key=lambda f: f.get("created_at") or "")
+    ext = latest["name"].rsplit(".", 1)[-1].lower()
+    mime = {v: k for k, v in EXT.items()}.get("jpg" if ext == "jpeg" else ext)
+    if not mime:
+        raise HTTPException(400, "unsupported file type")
+    doc_id = str(uuid4())
+    path = f"{user_id}/{sid}/{doc_id}.{EXT[mime]}"
+    bucket.copy(f"{folder}/{latest['name']}", path)
+    repo.add_document(
+        db, user_id, sid, {"id": doc_id, "doc_type": t, "storage_path": path, "mime": mime}
+    )
+    repo.write_audit(db, user_id, sid, "document.reused", {"doc_type": t}, "user")
     tasks.add_task(process_document, s, user_id, sid, doc_id)
     return {"document_id": doc_id, "status": "uploaded"}
 
@@ -117,6 +164,20 @@ def acknowledge_flag(
     session_id: UUID, flag_id: UUID, body: AcknowledgeIn, db: Db, user_id: UserId
 ) -> dict[str, Any]:
     return _resolve(db, user_id, session_id, flag_id, reason=body.reason, via="tap")
+
+
+@router.get("/audit")
+def get_audit(session_id: UUID, db: Db, user_id: UserId) -> dict[str, Any]:
+    """This session's audit trail with the hash chain recomputed (app/audit.py)."""
+    _session(db, user_id, session_id)
+    rows = fetch_audit(db, user_id=user_id, session_id=str(session_id))
+    broken = verify_chain(rows)
+    events = [
+        {k: r[k] for k in ("id", "actor", "action", "hash")}
+        | {"payload": json.loads(r["payload_text"] or "null"), "created_at": r["created_text"]}
+        for r in rows
+    ]
+    return {"events": events, "verified": not broken, "broken": broken}
 
 
 @router.get("/readiness")

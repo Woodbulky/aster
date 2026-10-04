@@ -473,3 +473,29 @@ A live test (session `0b5b6356…`, MahaDBT) showed ~28–68 s per screen reply,
 - Chosen: reader Groq first, GPU second (`SCREEN_READER_PRIMARY=fallback`, default; `gpu` switches back); writer Groq first. Frames now go to Groq on each page change (audited `llm.sensitive_fallback` `screen_frame`). 8 fields kept.
 - Verified live with 9 Groq keys (separate orgs): cached question → first audio ~2.4–2.5 s, new page ~4.0–5.8 s (en, mr); burst of 4 pages + 12 questions in 16 s, no throttling; Groq down (bad key) → GPU for both, works (new page ~18 s, cached ~5.5–9.5 s, weaker Marathi). pytest 326 passed.
 - Open: Render's `FALLBACK_LLM_API_KEY` must hold the same keys as the laptop `.env`. Benchmarking spends the daily Groq budget (200k/org): avoid load tests on demo day.
+
+## 2026-10-04 · M8 Audit, consent, profile, polish ✅
+User decisions: the UI stays English (the M1 decision holds; i18n = agent and card text in the reply language); delete my data = delete the account; a resolved flag proposes a profile update.
+
+**What changed**
+- **Schema:** `0005_audit_chain_lock` + `0006_audit_chain_id_order`: the audit trigger takes a per-chain advisory lock and a fresh id after it. Concurrent inserts into one chain (pipeline + WS) could fork it before. `0007_proposal_source_ref`: `profile_proposals.source_ref`. Types regenerated (+1 column). Advisors: only items accepted in earlier milestones.
+- **Audit:** `app/audit.py` recomputes `sha256(prev|actor|action|payload::text|created_at::text)`, reading Postgres' own text forms via PostgREST casts, and checks the links. CLI `uv run python -m app.audit [--user]` (exit 1 if broken); `GET /api/sessions/{id}/audit` → events + `verified` + `broken`.
+- **Consent:** `POST /api/consents` (append-only, versioned, audited). Enforced in code: `documents` before `POST …/documents`; `sensitive_profile` before caste/religion are saved (form or confirm card) → 403 `consent_required:<scope>`. Web: one `ConsentHost` screen; `ensureConsent` runs before every upload (checklist + vault, so no file reaches Storage first); profile saves retry after the 403.
+- **Delete my data:** `DELETE /api/me` → every Storage object under `<uid>/` (`list_v2`, recursive), then `auth.admin.delete_user` (all tables cascade). If files are left, the account is kept.
+- **Profile:** a source chip per saved value; edits = `manual` source + `profile.edited` audit (names only); Delete section (type DELETE).
+- **Resolved flag → profile:** when the final value differs from the profile, a pending proposal + `confirm_profile` card is created in code (tap and voice paths, one per flag, `source_ref {flag_id, field_value_id}`, evidence `document`/`voice`/`text`). Closes the M6 open issue.
+- **/sessions** ("My applications", empty and error states) and **/sessions/[id]** (audit timeline + intact/changed badge). Chat: offline and denied banners, Audit trail shortcut.
+- **Accessibility:** card headings h3→h2 (heading order), sr-only h1 in the conversation, `role="log"` moved off the `<ol>`.
+- `/guardrails`: 2 fixes. A pending proposal's caste value reached the system prompt (now `masked()`). A resent `flag_resolved` created duplicate proposals.
+
+**How verified**
+- pytest **341 passed** (`test_m8.py`: chain ok, edited payload, deleted row, the live row-1 hash; consent gates; consent versioned + audited; DELETE scoped; delete_user removes only `<uid>/` files and keeps the account if files stay; flag → proposal cases). ruff clean. Web: lint, typecheck, 6 node tests, build.
+- **Audit chain verifies:** `uv run python -m app.audit` → `215 events, 20 chains, 0 broken` (before and after M8). Throwaway user: `ok` → payload of id 268 edited → `BROKEN at ids [268]`, and `GET …/audit` → `verified: false, broken: [268]`.
+- **Delete my data** (throwaway user, real backend): 403s before consent; before delete: 13 rows in 7 tables + 3 Storage objects (session, page PNG, vault); `DELETE /api/me` → `{deleted: true, files: 3}`; after: 0 in every user table, 0 objects; SQL: `auth_users 0, storage_objects 0`.
+- **Lighthouse accessibility** (v12, desktop, signed in as the throwaway user, prod build): `/chat/<id>` **100** (95 before the `role=log` fix), `/sessions` 100, `/sessions/<id>` 100, `/profile` 100.
+
+**Open issues**
+- The consent text says "Aster doesn't read them aloud". The prompt now gets caste/religion masked, but nothing checks the spoken output for them.
+- Account-level audit events (consents, profile edits: `session_id` null) are verified by the CLI but not shown in the UI.
+- The pending `/code-review` findings on the Groq-first screen reader (commit `1841183`) are not addressed in M8.
+- Consent screens and the Delete flow were not clicked through by hand in Chrome; the API paths were checked live.

@@ -124,6 +124,12 @@ def latest_pending_proposal(db: Client, user_id: str, session_id: str) -> Row | 
     return _one(q.order("created_at", desc=True).limit(1).execute().data)
 
 
+def proposal_for_flag(db: Client, user_id: str, flag_id: str) -> Row | None:
+    """The profile proposal already made from this flag's resolution, if any."""
+    q = db.table("profile_proposals").select("id").eq("user_id", user_id)
+    return _one(q.eq("source_ref->>flag_id", flag_id).limit(1).execute().data)
+
+
 def set_proposal_status(db: Client, user_id: str, proposal_id: str, status: str) -> None:
     q = db.table("profile_proposals").update({"status": status}).eq("id", proposal_id)
     q.eq("user_id", user_id).eq("status", "pending").execute()
@@ -270,3 +276,31 @@ def add_rule_evaluations(db: Client, user_id: str, session_id: str, rows: list[R
     if rows:
         full = [{**r, "user_id": user_id, "session_id": session_id} for r in rows]
         db.table("rule_evaluations").insert(full).execute()
+
+
+# ---------- consents & account (M8) ----------
+def latest_consent(db: Client, user_id: str, scope: str) -> Row | None:
+    q = db.table("consents").select("*").eq("user_id", user_id).eq("scope", scope)
+    return _one(q.order("created_at", desc=True).limit(1).execute().data)
+
+
+def add_consent(db: Client, user_id: str, values: Row) -> Row | None:
+    return _one(db.table("consents").insert({**values, "user_id": user_id}).execute().data)
+
+
+def delete_user(db: Client, user_id: str) -> int:
+    """Every Storage object under <uid>/, then the auth user: every table cascades from
+    auth.users. -> number of objects removed."""
+    bucket = db.storage.from_(BUCKET)
+    removed = 0
+    for _ in range(100):  # list_v2 without a delimiter lists the whole tree under the prefix
+        page = bucket.list_v2({"prefix": f"{user_id}/", "with_delimiter": False, "limit": 1000})
+        names = [o.name for o in page.objects if o.name.startswith(f"{user_id}/")]
+        if not names:
+            break
+        bucket.remove(names)
+        removed += len(names)
+    else:  # a remove that silently does nothing: never delete the account with files left
+        raise RuntimeError("storage objects could not be removed")
+    db.auth.admin.delete_user(user_id)
+    return removed

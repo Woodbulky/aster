@@ -9,16 +9,16 @@ Auth: `Authorization: Bearer <supabase access token>` on REST. WS: first message
 | GET | `/api/me` | profile (masked) + assistant settings |
 | POST | `/api/profile/confirm` | `{proposal_id, accept: bool, edits?}` → `{status: accepted\|rejected, saved}`. Own pending proposals only (else 404). `edits` may only touch proposed keys; `""` = don't save that field. Kept values get `source_type` = the proposal's evidence + `source_ref {proposal_id, message_id}`; corrected values get `manual`. Audit `profile.confirmed`/`profile.rejected` with field names only |
 | PUT | `/api/assistant` | `{avatar_id, assistant_name, language, voice?}` |
-| PUT | `/api/profile` | profile form values typed by the user (`profiles` columns, `""` = not provided; unknown keys → 422; `aadhaar_last4` only) → saved with `profile_field_sources.source_type='manual'`. Conversation-derived values still go through proposals (`/api/profile/confirm`). |
+| PUT | `/api/profile` | profile form values typed by the user (`profiles` columns, `""` = not provided; unknown keys → 422; `aadhaar_last4` only) → saved with `profile_field_sources.source_type='manual'` + audit `profile.edited {fields}` (names only). Conversation-derived values still go through proposals (`/api/profile/confirm`). |
 | POST | `/api/sessions` | `{portal?, scheme_key?, portal_url?}` → session |
 | GET | `/api/sessions/{id}` | phase, fields, flags, docs, research |
 | POST | `/api/sessions/{id}/documents` | `{document_id, doc_type, mime, quality?}` after the client uploads to Storage `<uid>/<sid>/<document_id>.<ext>` → 202, pipeline runs in the background (`documents.status`: uploaded → processing → extracted\|failed, `error`: ocr_unavailable\|llm_unavailable\|internal). 400 if the object is missing; posting a `failed` document again retries it, otherwise 409. No classifier: every upload slot is typed. There is no `/view` endpoint: the client reads `documents.ocr` (pages + lines with bbox) through RLS and signs `ocr.pages[].path` itself |
 | POST | `/api/sessions/{id}/flags/{flag_id}/resolve` | `{candidate_id?, value?, reason (3–300)}` → `{flag_id, status}`. A candidate of this flag or a typed value (not both) → `resolved` + a confirmed `field_values` row; neither → `acknowledged`. Always `via=tap` (voice answers go through `resolve_flag` with their message id). 400 bad answer, 409 already answered |
 | POST | `/api/sessions/{id}/flags/{flag_id}/acknowledge` | `{reason}` → keep as is (also for blocking flags: the reason is logged) |
 | GET | `/api/sessions/{id}/readiness` | The `readiness` card payload (values the form will use + sources). The `/fill` page's field list |
-| POST | `/api/consents` | `{scope, granted}` |
-| GET | `/api/sessions/{id}/audit` | audit events (own session only) |
-| DELETE | `/api/me` | delete the user's data (documents, sessions, profile) |
+| POST | `/api/consents` | `{scope: documents\|sensitive_profile, granted}` → the row (append-only; latest per scope wins; `explanation_version` set by the backend; audit `consent.recorded`). Gates in code: `POST …/documents` needs `documents`; saving `caste`/`religion` (`PUT /api/profile`, `/profile/confirm`) needs `sensitive_profile` → else **403 `consent_required:<scope>`** (the web opens the consent screen and retries once). The web reads consents via RLS |
+| GET | `/api/sessions/{id}/audit` | `{events: [{id, actor, action, hash, payload, created_at}], verified, broken: [id]}` (own session only). The chain is recomputed on every call (`app/audit.py`; CLI: `uv run python -m app.audit [--user <id>]`, exit 1 if broken) |
+| DELETE | `/api/me` | `{deleted, files}`: removes every Storage object under `<uid>/`, then the auth user (every table cascades, the audit trail included). Files left over → 500 and the account is kept |
 
 ## WebSocket `/ws/session/{session_id}`
 Client → server (JSON unless noted):
@@ -56,7 +56,7 @@ Close codes (client must not retry): `4400` first message was not `hello`, `4401
 Cards (`card.kind` → `payload`):
 | kind | payload |
 |---|---|
-| `confirm_profile` | `{proposal_id, updates: {field_key: value}}` → answer via `POST /api/profile/confirm`, then `ui_event profile_confirmed/rejected` |
+| `confirm_profile` | `{proposal_id, updates: {field_key: value}}` → answer via `POST /api/profile/confirm`, then `ui_event profile_confirmed/rejected`. Also sent in code after a flag on a profile field is resolved with a value that differs from the profile (one proposal per flag; `source_ref {flag_id, field_value_id}`) |
 | `scheme_suggestions` | `{options: [{portal, scheme_key, name, draft, met, not_met, unknown}], note}` → tap sends `ui_event form_selected` |
 | `eligibility` | `{scheme_key\|null, name, origin: pack\|live, draft, results: [{id, text, status: met\|not_met\|unknown, reason, source: {url, quote}, ask_field}], counts, deadlines: [{label, date, passed, source}], note}`. Shown again after a reload (from its tool row) |
 | `document_checklist` | `{session_id, scheme, items: [{doc_type, label, required, source\|null, note, status: missing\|uploaded\|processing\|extracted\|failed, document_id}], others: [text], note}`. `source: null` = recommended by Aster (Aadhaar, 10th marksheet, passbook), not in the official list |

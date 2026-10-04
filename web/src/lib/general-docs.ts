@@ -1,4 +1,5 @@
 import type { Database } from "@/lib/database.types";
+import { ensureConsent, NO_CONSENT } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 
 type DocType = NonNullable<Database["public"]["Tables"]["documents"]["Row"]["doc_type"]>;
@@ -52,6 +53,7 @@ export async function listGeneralDocs(): Promise<Partial<Record<DocType, StoredD
 export async function uploadGeneralDoc(type: DocType, file: File): Promise<StoredDoc> {
   if (!ACCEPT.split(",").includes(file.type)) throw new Error("Use a PDF, JPG, PNG or WEBP file.");
   if (file.size > MAX_BYTES) throw new Error("Files must be 10 MB or smaller.");
+  if (!(await ensureConsent("documents"))) throw new Error(NO_CONSENT.documents);
   // The user's file name is not kept in the path: it can hold personal details.
   const ext = file.type === "application/pdf" ? "pdf" : file.type.split("/")[1];
   const path = `${folder(await uid(), type)}/${Date.now()}.${ext}`;

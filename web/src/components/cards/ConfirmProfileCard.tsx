@@ -48,9 +48,9 @@ export function ConfirmProfileCard({
 
   return (
     <section aria-label="Check these details" className="card max-w-md p-5">
-      <h3 className="flex items-center gap-2 font-heading font-semibold">
+      <h2 className="flex items-center gap-2 font-heading font-semibold">
         <UserRoundCheck className="size-5 text-primary" /> Check these details
-      </h3>
+      </h2>
       <p className="mt-1 text-sm text-muted-foreground">Nothing is saved until you confirm.</p>
       <dl className="mt-4 flex flex-col gap-3">
         {Object.keys(original).map((k) => {

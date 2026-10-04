@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, ensureConsent, NO_CONSENT } from "@/lib/api";
 import { ACCEPT, MAX_BYTES } from "@/lib/general-docs";
 import { createClient } from "@/lib/supabase/client";
 import type { DocStatus } from "@/lib/ws/protocol";
@@ -13,6 +13,7 @@ const POLL_LIMIT_MS = 3 * 60_000;
 export async function uploadSessionDoc(sessionId: string, docType: string, file: File, quality?: Record<string, number>): Promise<string> {
   if (!ACCEPT.split(",").includes(file.type)) throw new Error("Use a PDF, JPG, PNG or WEBP file.");
   if (file.size > MAX_BYTES) throw new Error("Files must be 10 MB or smaller.");
+  if (!(await ensureConsent("documents"))) throw new Error(NO_CONSENT.documents);
   const sb = createClient();
   const { data } = await sb.auth.getUser();
   if (!data.user) throw new Error("You're signed out. Please sign in again.");

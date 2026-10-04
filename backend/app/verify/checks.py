@@ -507,6 +507,51 @@ def resolve(
     return {**flag, "status": status, "resolution": resolution}
 
 
+def propose_profile_update(db: Client, user_id: str, flag: Row) -> Row | None:
+    """A resolved flag on a profile field whose final value differs from the saved profile ->
+    a pending profile proposal (guardrail 4: the profile changes only after the user confirms the
+    card). None when there is nothing to change or the value doesn't fit the profile column."""
+    from pydantic import ValidationError
+
+    from app.api.me import ProfileIn
+
+    res = flag.get("resolution") or {}
+    if flag.get("status") != "resolved" or not res.get("field_value_id"):
+        return None
+    if repo.proposal_for_flag(db, user_id, flag["id"]):  # a resent flag_resolved event
+        return None
+    cand = next(
+        (c for c in flag["details"].get("candidates", []) if c["id"] == res.get("candidate_id")),
+        None,
+    )
+    key = cand["field_key"] if cand else flag.get("field_key")
+    if key not in PROFILE_KEYS:
+        return None
+    current = (repo.get_profile(db, user_id) or {}).get(key)
+    if current not in (None, "") and same(key, current, res["value"]):
+        return None
+    value = res["value"] if KIND.get(key, "text") in ("text", "name") else canon(key, res["value"])
+    try:
+        updates = ProfileIn.model_validate({key: value}).model_dump(mode="json", exclude_none=True)
+    except ValidationError:
+        return None
+    if cand and cand.get("source_type") == "document":
+        evidence = "document"
+    else:
+        evidence = "voice" if res.get("via") == "voice" else "text"
+    return repo.create_proposal(
+        db,
+        user_id,
+        {
+            "session_id": flag["session_id"],
+            "updates": updates,
+            "evidence": evidence,
+            "message_id": res.get("message_id"),
+            "source_ref": {"flag_id": flag["id"], "field_value_id": res["field_value_id"]},
+        },
+    )
+
+
 def flag_card(flag: Row, lang: str) -> tuple[str, Row]:
     """-> (card kind, payload). One FlagCard renders every kind."""
     kind = {

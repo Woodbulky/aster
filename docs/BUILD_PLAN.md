@@ -12,7 +12,7 @@ Tick the box when its acceptance criteria are verified.
 - [x] M5 Research + eligibility (packs, live research, cards) — packs are drafts until the team verifies them
 - [x] M6 Documents + verification (OCR, extraction, contradictions, rules) — Realtime trimmed (poll + server push)
 - [ ] M7 Guided form filling (screen share, PiP, guidance) — built; acceptance verified live over the real WS + model + TTS with mock-portal screenshots; browser click-through (share picker, PiP, Private mode, mic) and GPU latency pending
-- [ ] M8 Audit, consent, profile page, polish
+- [x] M8 Audit, consent, profile page, polish — UI stays English (user decision); i18n = agent/card text only
 - [ ] M9 Demo hardening
 
 ---

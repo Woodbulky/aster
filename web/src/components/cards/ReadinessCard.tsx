@@ -11,10 +11,10 @@ export function ReadinessCard({ payload }: { payload: ReadinessPayload }) {
   const p = payload;
   return (
     <section aria-label="Readiness check" className={cn("card max-w-xl border-l-4 p-5", p.ready ? "border-l-primary" : "border-l-destructive")}>
-      <h3 className="flex items-start gap-2 font-heading font-semibold">
+      <h2 className="flex items-start gap-2 font-heading font-semibold">
         {p.ready ? <CheckCircle2 className="mt-0.5 size-5 text-primary" /> : <OctagonAlert className="mt-0.5 size-5 text-destructive" />}
         {p.ready ? "Your documents are checked" : `${p.open_block.length} thing${p.open_block.length === 1 ? "" : "s"} still need your answer`}
-      </h3>
+      </h2>
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         <span className="chip bg-sage">{p.fields.length} values with sources</span>
         <span className="chip bg-muted">{p.documents.length} documents read</span>

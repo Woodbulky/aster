@@ -15,13 +15,13 @@ from pydantic import BaseModel
 from app.agent import phases
 from app.agent.answers import read_answers
 from app.agent.prompts import read, t
-from app.agent.tools import TOOLS, Ctx, ToolResult, run_tool, schemas
+from app.agent.tools import TOOLS, Card, Ctx, ToolResult, run_tool, schemas
 from app.agent.tools.profile import masked
 from app.config import Settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable, chat_stream
 from app.speech.stream import Speaker
-from app.verify.checks import flag_summary
+from app.verify.checks import flag_summary, propose_profile_update
 from app.ws.protocol import (
     AgentState,
     AssistantDelta,
@@ -182,7 +182,9 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
         state.append(f"Missing core fields: {missing}")
         state.append(f"Suggested next question: {t(ctx.lang, f'ask.{missing[0]}')}")
     if pending:
-        state.append(f"Card waiting for the user to confirm: {json.dumps(pending['updates'])}")
+        # masked: a proposal from a resolved caste flag must not hand the model the value
+        waiting = json.dumps(masked(pending["updates"]), ensure_ascii=False)
+        state.append(f"Card waiting for the user to confirm: {waiting}")
     if phase in ("documents", "verification", "ready"):
         # The model invented problems that were never flagged (seen live: a "father's name"
         # mismatch, then the same reply on a loop). It only gets the real list.
@@ -303,7 +305,34 @@ async def run_tool_ui(
             "lang": ctx.lang,
         },
     )
+    if name == "resolve_flag" and res.ok:
+        await offer_profile_update(ctx, send, json.loads(args)["flag_id"])
     return res
+
+
+async def offer_profile_update(ctx: Ctx, send: Send, flag_id: str) -> None:
+    """A resolved flag on a profile field -> a confirm_profile card in code, so the profile can
+    follow the value the user picked (guardrail 4: saved only when they confirm the card)."""
+    flag = await _db(repo.get_flag, ctx.db, ctx.user_id, flag_id)
+    prop = flag and await _db(propose_profile_update, ctx.db, ctx.user_id, flag)
+    if not prop:
+        return
+    payload = {"proposal_id": prop["id"], "updates": prop["updates"]}
+    card = Card(kind="confirm_profile", payload=payload)
+    await send(CardMsg(**card.model_dump()))
+    res = ToolResult(ok=True, data={"proposal_id": prop["id"], "from_flag": flag_id}, card=card)
+    await _db(  # stored like a tool row, so the card comes back after a reload
+        repo.add_message,
+        ctx.db,
+        ctx.user_id,
+        ctx.session["id"],
+        {
+            "role": "tool",
+            "tool_name": "propose_profile_update",
+            "tool_payload": {"args": json.dumps(prop["updates"]), "result": res.model_dump()},
+            "lang": ctx.lang,
+        },
+    )
 
 
 async def show_new_flag_cards(ctx: Ctx, send: Send) -> list[dict[str, Any]]:

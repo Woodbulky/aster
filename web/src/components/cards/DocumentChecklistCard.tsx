@@ -3,6 +3,7 @@
 import { CheckCircle2, ExternalLink, FileUp, LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
 import { BLUR_MIN, blurScore } from "@/lib/blur";
 import { ACCEPT } from "@/lib/general-docs";
 import { sessionDocStatus, uploadSessionDoc, waitForDocument } from "@/lib/documents";
@@ -10,6 +11,9 @@ import { cn } from "@/lib/utils";
 import type { ChecklistItem, DocStatus, DocumentChecklistPayload } from "@/lib/ws/protocol";
 
 type Local = DocStatus | "uploading";
+
+// Vault reuse is tried once per session+type, even if the card remounts.
+const reused = new Set<string>();
 
 const CHIP: Record<Local, { text: string; tone: string }> = {
   missing: { text: "To upload", tone: "bg-muted text-muted-foreground" },
@@ -39,9 +43,24 @@ export function DocumentChecklistCard({ payload }: { payload: DocumentChecklistP
   useEffect(() => {
     // The card is a snapshot from when it was shown: refresh from the database.
     sessionDocStatus(payload.session_id)
-      .then((docs) => setStatus((s) => ({ ...s, ...Object.fromEntries(Object.entries(docs).map(([t, d]) => [t, d.status])) })))
+      .then((docs) => {
+        setStatus((s) => ({ ...s, ...Object.fromEntries(Object.entries(docs).map(([t, d]) => [t, d.status])) }));
+        // Anything already saved in the profile vault is reused instead of asked for again.
+        for (const item of payload.items) {
+          if (docs[item.doc_type] || reused.has(`${payload.session_id}:${item.doc_type}`)) continue;
+          reused.add(`${payload.session_id}:${item.doc_type}`);
+          api<{ document_id?: string }>("POST", `/api/sessions/${payload.session_id}/documents/from-vault`, { doc_type: item.doc_type })
+            .then((r) => {
+              if (!r.document_id) return;
+              setStatus((s) => ({ ...s, [item.doc_type]: "uploaded" }));
+              const set = (st: DocStatus) => setStatus((x) => ({ ...x, [item.doc_type]: st }));
+              return waitForDocument(r.document_id, set);
+            })
+            .catch(() => {}); // 404: nothing saved, the slot stays "To upload"
+        }
+      })
       .catch(() => {});
-  }, [payload.session_id]);
+  }, [payload.session_id, payload.items]);
 
   async function pick(item: ChecklistItem, file: File | undefined, checked = false) {
     if (!file) return;
@@ -66,9 +85,9 @@ export function DocumentChecklistCard({ payload }: { payload: DocumentChecklistP
 
   return (
     <section aria-label={`Documents for ${payload.scheme}`} className="card max-w-xl p-5">
-      <h3 className="flex items-start gap-2 font-heading font-semibold">
+      <h2 className="flex items-start gap-2 font-heading font-semibold">
         <FileUp className="mt-0.5 size-5 shrink-0 text-primary" /> Documents for {payload.scheme}
-      </h3>
+      </h2>
       <p className="mt-1 text-sm text-muted-foreground">{payload.note}</p>
       <ul className="mt-3 divide-y divide-border">
         {payload.items.map((item) => {

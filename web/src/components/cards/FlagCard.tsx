@@ -66,13 +66,13 @@ export function FlagCard({ payload, onAnswered }: { payload: FlagPayload; onAnsw
       aria-label={`Check needed: ${payload.field_label ?? "document"}`}
       className={cn("card max-w-xl border-l-4 p-5", !open ? "border-l-primary" : block ? "border-l-destructive" : "border-l-[#d69e2e]")}
     >
-      <h3 className="flex items-start gap-2 font-heading font-semibold">
+      <h2 className="flex items-start gap-2 font-heading font-semibold">
         {open ? <Icon className={cn("mt-0.5 size-5 shrink-0", block ? "text-destructive" : "text-[#b7791f]")} /> : <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />}
         <span>
           {payload.type === "missing_doc" ? payload.doc?.label : payload.field_label}
           <span className="ml-2 align-middle text-xs font-normal text-muted-foreground">{!open ? "Answered" : block ? "Needs your answer" : "Worth checking"}</span>
         </span>
-      </h3>
+      </h2>
       <p className="mt-1 text-sm">{payload.message}</p>
       {payload.doc?.source && (
         <a href={payload.doc.source.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">

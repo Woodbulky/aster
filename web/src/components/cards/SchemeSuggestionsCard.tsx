@@ -15,9 +15,9 @@ export function SchemeSuggestionsCard({
   const [picked, setPicked] = useState<string | null>(null);
   return (
     <section aria-label="Choose a scholarship" className="card max-w-md p-5">
-      <h3 className="flex items-center gap-2 font-heading font-semibold">
+      <h2 className="flex items-center gap-2 font-heading font-semibold">
         <GraduationCap className="size-5 text-primary" /> Choose a scholarship
-      </h3>
+      </h2>
       <ul className="mt-4 flex flex-col gap-2">
         {payload.options.map((o) => (
           <li key={o.scheme_key}>
