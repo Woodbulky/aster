@@ -63,9 +63,15 @@ export default function ChatSessionPage() {
   const voice = useVoice({ player, sendAudio, interrupt });
   const [input, setInput] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true); // the reader scrolled up: leave them there
 
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const last = items.at(-1);
+    const mine = last?.kind === "msg" && last.role === "user";
+    if (!nearBottom.current && !mine) return;
+    // Streaming tokens jump (a smooth scroll per token jitters); new items glide.
+    const streaming = last?.kind === "msg" && last.streaming;
+    end.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth", block: "end" });
   }, [items, agent.detail]);
 
   const busy = agent.state === "thinking";
@@ -116,7 +122,13 @@ export default function ChatSessionPage() {
 
         {/* Messages / welcome */}
         {/* relative: keeps the cards' sr-only (absolute) inputs inside this scroller, not the page */}
-        <div className="relative min-h-0 flex-1 overflow-y-auto">
+        <div
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          }}
+          className="relative min-h-0 flex-1 overflow-y-auto"
+        >
           <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-8 sm:px-8">
             {items.length === 0 ? (
               <div className="my-auto flex flex-col items-center text-center">

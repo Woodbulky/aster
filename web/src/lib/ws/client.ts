@@ -154,6 +154,7 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
           break;
         case "error":
           setError(m.message);
+          setAgent({ state: "idle", detail: null }); // some error paths end a request without agent_state
           break;
       }
     }
@@ -227,13 +228,18 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
   const sendText = useCallback(
     (text: string) => {
       if (!send({ type: "user_text", text })) return;
+      setAgent({ state: "thinking", detail: null }); // at once; the server's agent_state follows
       setItems((xs) => [...xs, { kind: "msg", id: crypto.randomUUID(), role: "user", text, lang: langRef.current }]);
     },
     [send],
   );
 
   const sendUi = useCallback(
-    (name: UiEventName, payload: Record<string, unknown> = {}) => send({ type: "ui_event", name, payload }),
+    (name: UiEventName, payload: Record<string, unknown> = {}) => {
+      const ok = send({ type: "ui_event", name, payload });
+      if (ok && name !== "screen_share_started") setAgent({ state: "thinking", detail: null }); // that one runs no turn
+      return ok;
+    },
     [send],
   );
 
@@ -242,7 +248,9 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     (audio: ArrayBuffer, mime: string) => {
       if (!send({ type: "audio_start", mime, lang_hint: langRef.current })) return false;
       ws.current!.send(audio);
-      return send({ type: "audio_end" });
+      const ok = send({ type: "audio_end" });
+      if (ok) setAgent({ state: "thinking", detail: null });
+      return ok;
     },
     [send],
   );
