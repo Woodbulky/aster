@@ -37,6 +37,11 @@ log = logging.getLogger(__name__)
 Send = Callable[[BaseModel], Awaitable[None]]
 MAX_TOOL_CALLS = 6
 MAX_RESEARCH_NUDGES = 2
+LOOKUPS = {"search_web", "fetch_url", "read_pdf"}  # same args -> same answer within a turn
+REPEAT_CALL = (
+    "you already made this exact call this turn; use that result, change the query, "
+    "or answer with what you have"
+)
 # A short spoken reply is a few sentences; the cap stops a looping model (seen live with the 8B
 # GPU model) from streaming and paying for TTS forever.
 REPLY_MAX_TOKENS = 800
@@ -463,6 +468,7 @@ async def run_turn(
     research_nudges = 0
     promised = False
     checked = False  # check_eligibility ran in code after save_research
+    seen: set[tuple[str, str]] = set()  # (tool, args) already run this turn
     onboarding = ctx.session["phase"] == "onboarding"
 
     async def hold(_m: BaseModel) -> None:
@@ -556,11 +562,16 @@ async def run_turn(
                 calls += 1
                 bonus = save_bonus and c["name"] == "save_research"
                 save_bonus = save_bonus and not bonus
+                key = (c["name"], c["arguments"] or "{}")
                 if calls > MAX_TOOL_CALLS and not bonus:
                     res = ToolResult(
                         ok=False, error="tool limit reached; answer with what you have"
                     )
+                elif key in seen and c["name"] in LOOKUPS:
+                    # Seen live: the same search_web 5× in one turn, then the LLM call failed.
+                    res = ToolResult(ok=False, error=REPEAT_CALL)
                 else:
+                    seen.add(key)
                     res = await run_tool_ui(ctx, send, c["name"], c["arguments"])
                     card_sent = card_sent or res.card is not None
                     read_pages = read_pages or (res.ok and c["name"] in ("fetch_url", "read_pdf"))

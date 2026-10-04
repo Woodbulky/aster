@@ -214,6 +214,23 @@ def test_tool_call_cap(store: FakeStore, run) -> None:
     assert "tool limit" in llm.calls[-1]["messages"][-1]["content"]
 
 
+def test_repeated_lookup_not_rerun(store: FakeStore, run, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agent.tools import ToolResult
+
+    ran: list[str] = []
+
+    async def fake_tool(_ctx, _send, name, args):
+        ran.append(name)
+        return ToolResult(ok=True, data={"results": []})
+
+    monkeypatch.setattr(orchestrator, "run_tool_ui", fake_tool)
+    q = {"query": "Shahu Maharaj"}
+    llm = FakeLLM(call("search_web", q), call("search_web", q), text("done"))
+    run(llm, user_text="shahu maharaj")
+    assert ran == ["search_web"]
+    assert "already made this exact call" in llm.calls[-1]["messages"][-1]["content"]
+
+
 def test_llm_down_says_template(store: FakeStore, run) -> None:
     sent = run(FakeLLM(LLMUnavailable("both down")), user_text="नमस्कार")
     assert sent[-2].text.startswith("माफ करा")

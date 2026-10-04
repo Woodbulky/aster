@@ -35,6 +35,7 @@ _B64 = re.compile(r"[A-Za-z0-9+/=_-]{80,}")
 # rounds and Groq's free tier allows 8k tokens/min). Longer waits than this fail as before.
 RATE_LIMIT_MAX_WAIT_S = 30.0
 RATE_LIMIT_RETRIES = 2
+SHRUNK_TOOL_CHARS = 400  # older tool outputs on a 413 retry
 _TRY_AGAIN = re.compile(r"try again in ([0-9.]+)s")
 
 
@@ -81,6 +82,9 @@ class Breaker:
 
 breakers: dict[Provider, Breaker] = {"gpu": Breaker(), "fallback": Breaker()}
 _discovery: tuple[float, str | None] | None = None  # (fetched_at monotonic, url)
+# The model the worker says it serves (gpu_endpoints.models.brain). Wins over BRAIN_MODEL: seen
+# live, Render's env said qwen3-vl:8b while Kaggle served qwen3-vl:8b-instruct -> every call 404.
+_gpu_brain: str | None = None
 _http: httpx.AsyncClient | None = None
 _http_loop: asyncio.AbstractEventLoop | None = None
 
@@ -89,7 +93,8 @@ _http_loop: asyncio.AbstractEventLoop | None = None
 def _fetch_gpu_row(s: Settings) -> dict[str, Any] | None:
     if not (s.supabase_url and s.supabase_secret_key):
         return None
-    q = repo.get_db().table("gpu_endpoints").select("url,last_seen").eq("name", s.gpu_worker_name)
+    q = repo.get_db().table("gpu_endpoints").select("url,last_seen,models")
+    q = q.eq("name", s.gpu_worker_name)
     rows = q.limit(1).execute().data
     return rows[0] if rows else None
 
@@ -102,7 +107,7 @@ def _fresh(last_seen: str | None, stale_s: int) -> bool:
 
 
 def _discover(s: Settings) -> str | None:
-    global _discovery
+    global _discovery, _gpu_brain
     now = time.monotonic()
     if _discovery and now - _discovery[0] < DISCOVERY_TTL_S:
         return _discovery[1]
@@ -117,6 +122,7 @@ def _discover(s: Settings) -> str | None:
         else None
     )
     _discovery = (now, url)
+    _gpu_brain = ((row or {}).get("models") or {}).get("brain") if url else None
     return url
 
 
@@ -182,23 +188,49 @@ def _client() -> httpx.AsyncClient:
 def _target(s: Settings, p: Provider) -> tuple[str, str, list[str]]:
     """(chat completions URL, model, api keys to try in order)."""
     if p == "gpu":
-        return f"{gpu_url(s)}/v1/chat/completions", s.brain_model, [s.gateway_token]
+        url = gpu_url(s)  # first: discovery refreshes _gpu_brain
+        model = (not s.gpu_url_override and _gpu_brain) or s.brain_model
+        return f"{url}/v1/chat/completions", model, [s.gateway_token]
     keys = [k.strip() for k in s.fallback_llm_api_key.split(",") if k.strip()]
     base = s.fallback_llm_base_url.rstrip("/")
     return f"{base}/chat/completions", s.fallback_llm_model, keys
+
+
+def _shrink(body: dict[str, Any]) -> dict[str, Any]:
+    """Older tool outputs cut short; the newest stays whole. Seen live: Groq on_demand allows 7000
+    input tokens a minute, and five search results made one request 7227 -> 413."""
+    msgs = body["messages"]
+    last = max((i for i, m in enumerate(msgs) if m.get("role") == "tool"), default=-1)
+    return {
+        **body,
+        "messages": [
+            {**m, "content": m["content"][:SHRUNK_TOOL_CHARS] + "…"}
+            if m.get("role") == "tool" and i != last and isinstance(m.get("content"), str)
+            else m
+            for i, m in enumerate(msgs)
+        ],
+    }
 
 
 async def _sse(s: Settings, p: Provider, body: dict[str, Any]) -> AsyncIterator[Chunk]:
     url, model, keys = _target(s, p)
     # ponytail: always starts at key 1, so a rate-limited first key costs one extra round trip.
     # Groq limits are per organization: rotation only helps if the keys are from different orgs.
-    for i, key in enumerate(keys):
+    i, shrunk = 0, False
+    while i < len(keys):
         req = _client().build_request(
-            "POST", url, json={**body, "model": model}, headers={"Authorization": f"Bearer {key}"}
+            "POST",
+            url,
+            json={**body, "model": model},
+            headers={"Authorization": f"Bearer {keys[i]}"},
         )
         resp = await _client().send(req, stream=True)
         try:
+            if resp.status_code == 413 and not shrunk:
+                shrunk, body = True, _shrink(body)  # retry once, same key
+                continue
             if resp.status_code == 429 and i < len(keys) - 1:
+                i += 1
                 continue
             if resp.status_code == 429:
                 text = (await resp.aread()).decode(errors="replace")

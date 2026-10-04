@@ -71,6 +71,16 @@ def test_discovery_fresh_stale_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.gpu_url(cfg) is None
 
 
+def test_gpu_model_comes_from_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = {"url": "https://a.trycloudflare.com", "last_seen": ago(10)}
+    monkeypatch.setattr(client, "_fetch_gpu_row", lambda _s: dict(row, models={"brain": "m:it"}))
+    cfg = s(**SB, brain_model="m")
+    assert client._target(cfg, "gpu")[1] == "m:it"
+    client.reset_discovery()
+    monkeypatch.setattr(client, "_fetch_gpu_row", lambda _s: row)  # older worker: no models
+    assert client._target(cfg, "gpu")[1] == "m"
+
+
 def test_discovery_cached_30s(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
     now = [1000.0]
@@ -198,6 +208,26 @@ def test_fallback_rotates_key_on_429(monkeypatch: pytest.MonkeyPatch) -> None:
     assert [c.delta["content"] for c in chunks] == ["ok"]
     assert [r.headers["authorization"] for r in seen] == ["Bearer k1", "Bearer k2"]
     assert json.loads(seen[1].content)["model"] == "fb-model"
+
+
+def test_413_retries_once_with_older_tool_outputs_cut(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(r: httpx.Request) -> httpx.Response:
+        if len(r.content) > 3000:
+            return httpx.Response(413, content=b"Request too large ... ITPM")
+        return httpx.Response(200, content=sse("ok"))
+
+    seen = use_transport(monkeypatch, handler)
+    msgs = [
+        *HELLO,
+        {"role": "tool", "tool_call_id": "a", "content": "x" * 2000},
+        {"role": "tool", "tool_call_id": "b", "content": "y" * 900},
+    ]
+    chunks = collect(s(**FB), msgs)
+    assert [c.delta["content"] for c in chunks] == ["ok"]
+    assert [r.headers["authorization"] for r in seen] == ["Bearer k1", "Bearer k1"]
+    sent = json.loads(seen[1].content)["messages"]
+    assert len(sent[1]["content"]) <= client.SHRUNK_TOOL_CHARS + 1  # older one cut
+    assert sent[2]["content"] == "y" * 900  # newest kept whole
 
 
 def test_rate_limit_waits_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
