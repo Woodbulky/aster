@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from rapidfuzz import fuzz
 from rapidfuzz.utils import default_process
 
-from app.agent.tools import Card, Ctx, ToolResult, register
+from app.agent.tools import Card, Ctx, NoArgs, ToolResult, register
 from app.agent.tools.eligibility import counts, evaluate_pack
 from app.agent.tools.research import cached_research, reuse_research
 from app.db import supabase as repo
@@ -137,6 +137,33 @@ def pack_for_name(name: str) -> str | None:
     return scores[0][1]
 
 
+def scheme_values(args: SetFormArgs) -> dict[str, Any] | None:
+    """The session columns for a chosen scheme, or None for an unknown scheme_key."""
+    if args.scheme_name and (key := pack_for_name(args.scheme_name)):
+        args = SetFormArgs(scheme_key=key)
+    if not args.scheme_key:
+        # No pack: no official URL is known yet, so none is stored.
+        return {
+            "portal": None,
+            "scheme_key": None,
+            "scheme_name": args.scheme_name,
+            "portal_url": None,
+        }
+    pack = usable_packs().get(args.scheme_key)
+    if not pack:
+        return None
+    # The portal URL comes from the reviewed knowledge files, never from the LLM (guardrail 8).
+    return {
+        "portal": pack.portal,
+        "scheme_key": pack.scheme_key,
+        "scheme_name": pack.name.en,
+        "portal_url": portals()[pack.portal].url if pack.portal in portals() else None,
+    }
+
+
+UNKNOWN_KEY = "unknown scheme_key; use one from suggest_schemes or scheme_name"
+
+
 @register(
     "set_form",
     "Record the scholarship the user chose. scheme_key for a known scheme; otherwise "
@@ -145,29 +172,10 @@ def pack_for_name(name: str) -> str | None:
     SetFormArgs,
 )
 def set_form(ctx: Ctx, args: SetFormArgs) -> ToolResult:
-    if args.scheme_name and (key := pack_for_name(args.scheme_name)):
-        args = SetFormArgs(scheme_key=key)
-    if args.scheme_key:
-        pack = usable_packs().get(args.scheme_key)
-        if not pack:
-            return ToolResult(
-                ok=False, error="unknown scheme_key; use one from suggest_schemes or scheme_name"
-            )
-        # The portal URL comes from the reviewed knowledge files, never from the LLM (guardrail 8).
-        values: dict[str, Any] = {
-            "portal": pack.portal,
-            "scheme_key": pack.scheme_key,
-            "scheme_name": pack.name.en,
-            "portal_url": portals()[pack.portal].url if pack.portal in portals() else None,
-        }
-    else:
-        # No pack: no official URL is known yet, so none is stored.
-        values = {
-            "portal": None,
-            "scheme_key": None,
-            "scheme_name": args.scheme_name,
-            "portal_url": None,
-        }
+    values = scheme_values(args)
+    if values is None:
+        return ToolResult(ok=False, error=UNKNOWN_KEY)
+    args = SetFormArgs(scheme_key=values["scheme_key"]) if values["scheme_key"] else args
     row = repo.update_session(ctx.db, ctx.user_id, ctx.session["id"], values)
     if not row:
         return ToolResult(ok=False, error="session not updated")
@@ -188,3 +196,54 @@ def set_form(ctx: Ctx, args: SetFormArgs) -> ToolResult:
         )
         return ToolResult(ok=True, data=data, card=card)
     return ToolResult(ok=True, data=data)
+
+
+@register(
+    "mark_submitted",
+    "Record that the user says they submitted this scholarship's form on the official portal "
+    "themselves. Call it only when they say so.",
+    "Marking this application as submitted",
+)
+def mark_submitted(ctx: Ctx, _: NoArgs) -> ToolResult:
+    # The user's word, not a check: Aster never sees or confirms the submission (guardrail 5).
+    row = repo.update_session(
+        ctx.db, ctx.user_id, ctx.session["id"], {"phase": "done", "status": "done"}
+    )
+    if not row:
+        return ToolResult(ok=False, error="session not updated")
+    ctx.session.update(row)
+    repo.write_audit(
+        ctx.db, ctx.user_id, ctx.session["id"], "form.submitted_by_user", {}, actor="user"
+    )
+    return ToolResult(
+        ok=True,
+        data={"rule": "the user said they submitted; Aster did not see or confirm it"},
+    )
+
+
+@register(
+    "new_application",
+    "Start a separate application for another scholarship, keeping this one as it is. The "
+    "profile is reused; the new scholarship gets its own research and documents. scheme_key for "
+    "a known scheme; otherwise scheme_name.",
+    "Starting a new application",
+    SetFormArgs,
+)
+def new_application(ctx: Ctx, args: SetFormArgs) -> ToolResult:
+    values = scheme_values(args)
+    if values is None:
+        return ToolResult(ok=False, error=UNKNOWN_KEY)
+    if values["scheme_name"] == ctx.session.get("scheme_name"):
+        return ToolResult(ok=False, error="that is this application's scholarship already")
+    row = repo.create_session(ctx.db, ctx.user_id, values)
+    if not row:
+        return ToolResult(ok=False, error="application not created")
+    repo.write_audit(
+        ctx.db, ctx.user_id, row["id"], "form.set", {**values, "from": ctx.session["id"]}, "agent"
+    )
+    payload = {"session_id": row["id"], "scheme": values["scheme_name"]}
+    return ToolResult(
+        ok=True,
+        data={**payload, "rule": "the card opens it; Aster researches it there"},
+        card=Card(kind="new_application", payload=payload),
+    )

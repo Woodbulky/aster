@@ -46,6 +46,7 @@ const PHASE_LABEL: Record<string, string> = {
   verification: "Checking your documents",
   ready: "Ready to fill the form",
   form_fill: "Filling the form",
+  done: "Submitted",
 };
 
 const STATUS_LABEL: Record<Exclude<Status, "open">, string> = {
@@ -54,8 +55,13 @@ const STATUS_LABEL: Record<Exclude<Status, "open">, string> = {
   denied: "Can't open this conversation — sign in again",
 };
 
+// Keyed: the "new application" card links to another session; its socket and history start fresh.
 export default function ChatSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  return <ChatSession key={sessionId} sessionId={sessionId} />;
+}
+
+function ChatSession({ sessionId }: { sessionId: string }) {
   const { profile } = useShell();
   const assistant = useAssistant();
   const lang = (LANGS.some((l) => l.id === assistant.language) ? assistant.language : "en") as Lang;
@@ -211,6 +217,14 @@ export default function ChatSessionPage() {
                         <ReadinessCard payload={card.payload} />
                       ) : card.kind === "start_screen_share" ? (
                         <StartScreenShareCard payload={card.payload} />
+                      ) : card.kind === "new_application" ? (
+                        <section aria-label="New application" className="card max-w-xl border-l-4 border-l-primary p-5">
+                          <h2 className="font-heading font-semibold">New application: {card.payload.scheme}</h2>
+                          <p className="mt-1 text-sm text-muted-foreground">Your profile carries over. This one stays in My applications.</p>
+                          <Link href={`/chat/${card.payload.session_id}`} className="btn-primary mt-3 inline-flex h-10 gap-2 rounded-xl px-4 text-sm">
+                            Open it <ArrowRight className="size-4" />
+                          </Link>
+                        </section>
                       ) : (
                         <ResearchSummaryCard payload={card.payload} />
                       )}

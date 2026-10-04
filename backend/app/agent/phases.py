@@ -33,6 +33,8 @@ CORE_FIELDS: tuple[str, ...] = (
 # suggest_schemes + set_form stay available after choose_form so the user can switch schemes;
 # the phase then follows the new scheme's research state.
 PICK = ("suggest_schemes", "set_form")
+# Once documents are attached to this session, another scholarship is a new session instead.
+NEW = "new_application"
 TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     "onboarding": ("get_profile", "propose_profile_update", "explain_why_asked"),
     "choose_form": ("get_profile", "list_supported_forms", *PICK),
@@ -61,6 +63,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "ask_resolution",
         "resolve_flag",
         "explain_why_asked",
+        NEW,
     ),
     "verification": (
         "run_verification",
@@ -71,6 +74,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "get_document_status",
         "request_documents",
         "explain_why_asked",
+        NEW,
     ),
     "ready": (
         "readiness_summary",
@@ -80,9 +84,12 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
         "get_document_status",
         "run_verification",
         "start_form_fill",
+        "mark_submitted",
+        NEW,
     ),
     # Screen turns run in code (agent/screen.py); this is only for words without a fresh frame.
-    "form_fill": ("readiness_summary", "start_form_fill"),
+    "form_fill": ("readiness_summary", "start_form_fill", "mark_submitted", NEW),
+    "done": (NEW,),
 }
 
 

@@ -140,6 +140,26 @@ def test_set_form(store: FakeStore) -> None:
     )
 
 
+def test_submitted_then_new_application(store: FakeStore) -> None:
+    s1 = store.sessions["s1"]
+    s1.update(phase="form_fill", scheme_key="demo.obc_aid", scheme_name="OBC Aid")
+    assert not run_tool(ctx(store), "set_form", {"scheme_name": "Reliance UG"}).ok  # not here
+    assert run_tool(ctx(store), "mark_submitted", {}).ok
+    assert (s1["phase"], s1["status"]) == ("done", "done")
+    assert store.audit[-1][0] == "form.submitted_by_user"
+    c = ctx(store)
+    assert not run_tool(c, "new_application", {"scheme_key": "demo.obc_aid"}).ok  # same one
+    res = run_tool(c, "new_application", {"scheme_name": "Reliance Foundation UG"})
+    assert res.ok and res.card.kind == "new_application"
+    new = store.sessions[res.card.payload["session_id"]]
+    assert (new["scheme_name"], new["phase"], new["portal_url"]) == (
+        "Reliance Foundation UG",
+        "onboarding",  # next_phase moves it to research when the new chat opens
+        None,
+    )
+    assert s1["scheme_name"] == "OBC Aid"  # the submitted one is untouched
+
+
 def test_suggest_schemes_ranks_by_fit(store: FakeStore) -> None:
     store.sessions["s1"]["phase"] = "choose_form"
     store.profile.update(COMPLETE_PROFILE)  # OBC, income 1.48 lakh, 12th 81.5%

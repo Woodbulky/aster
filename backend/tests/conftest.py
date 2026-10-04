@@ -79,6 +79,12 @@ class FakeStore:
         s = self.sessions.get(session_id)
         return dict(s) if s and s["user_id"] == user_id else None
 
+    def create_session(self, _db, user_id, values):
+        assert self._own(user_id)
+        sid = f"s{len(self.sessions) + 1}"
+        self.sessions[sid] = {"id": sid, "user_id": user_id, "phase": "onboarding", **values}
+        return dict(self.sessions[sid])
+
     def update_session(self, _db, user_id, session_id, values):
         s = self.sessions[session_id]
         assert s["user_id"] == user_id
@@ -223,6 +229,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         "set_proposal_status",
         "proposal_for_flag",
         "write_audit",
+        "create_session",
         "add_fetched",
         "get_fetched",
         "find_fetched",

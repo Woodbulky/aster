@@ -130,7 +130,8 @@ export type Card =
   | { card_id: string; kind: "missing_item"; payload: FlagPayload }
   | { card_id: string; kind: "low_confidence"; payload: FlagPayload }
   | { card_id: string; kind: "readiness"; payload: ReadinessPayload }
-  | { card_id: string; kind: "start_screen_share"; payload: StartScreenSharePayload };
+  | { card_id: string; kind: "start_screen_share"; payload: StartScreenSharePayload }
+  | { card_id: string; kind: "new_application"; payload: { session_id: string; scheme: string } };
 
 /** One visible portal field. `value` is only ever one of the user's checked values (FORM_FILL.md). */
 export type GuideField = {
