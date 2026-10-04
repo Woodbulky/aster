@@ -16,9 +16,11 @@ from app.agent.screen import (
     Reader,
     Reading,
     Written,
+    classify,
     invented_number,
     postprocess,
     recent_talk,
+    verdict,
 )
 from app.speech import stream
 from app.speech.base import SpeechUnavailable, Transcript
@@ -91,6 +93,12 @@ def test_sensitive_pages_pause_and_suggest_nothing(kind, labels, template) -> No
     assert g.sensitive and g.target is None
     assert template in g.instruction
     assert "123456" not in shown(g) and "Aarav" not in shown(g)
+
+
+@pytest.mark.parametrize("label", ["Current Institute Pin Code", "PIN-code", "Pin code"])
+def test_a_pin_code_box_is_not_a_payment_page(label) -> None:
+    assert classify(rd("form", ["12th standard percentage", label])) == ("form", False)
+    assert classify(rd("form", ["Enter UPI PIN"])) == ("payment", True)
 
 
 @pytest.mark.parametrize("button", ["Final Submit", "Submit Application", "अंतिम सबमिट"])
@@ -624,3 +632,44 @@ def test_ws_frames_do_not_use_the_message_limit(fill, sid: str) -> None:
         for _ in range(29):
             ws.send_json({"type": "ping"})
             assert ws.receive_json()["type"] == "pong"
+
+
+# ---------- "as per Aadhaar" boxes take the Aadhaar's own text ----------
+MARKSHEET_NAME = [
+    {"field_key": "full_name", "label": "Full name", "value": "KASLIWAL HARSH", "source": "Class 10 marksheet · L3", "on_aadhaar": None},
+]  # fmt: skip
+
+
+def test_as_on_aadhaar_box_without_an_aadhaar_suggests_no_other_document() -> None:
+    # seen live: "First name *. Type KASLIWAL HARSH." (the Class 10 marksheet's name)
+    r = rd("form", ["Full name (as on Aadhaar)"])
+    w = wr("Full name (as on Aadhaar)", "full_name", "Type KASLIWAL HARSH", "KASLIWAL HARSH")
+    g = postprocess(r, w, MARKSHEET_NAME, "en", "f")
+    assert "KASLIWAL" not in shown(g) and g.target.value is None
+    assert "exactly as printed on your Aadhaar" in g.instruction
+
+
+def test_as_on_aadhaar_box_takes_the_aadhaar_value() -> None:
+    fields = [{**MARKSHEET_NAME[0], "on_aadhaar": "Harsh Padam Kasliwal"}]
+    for label in ("Name as per Aadhaar", "Name (as on Aadhaar)", "आधारनुसार नाव"):
+        g = postprocess(rd("form", [label]), wr(label, "full_name"), fields, "en", "f")
+        assert g.target.value == "Harsh Padam Kasliwal" and g.target.source == "Aadhaar card"
+    # no Aadhaar hint: the checked value, as before
+    g = postprocess(rd("form", ["Full name"]), wr("Full name", "full_name"), fields, "en", "f")
+    assert g.target.value == "KASLIWAL HARSH"
+
+
+def test_a_name_part_box_never_gets_the_full_name_to_type() -> None:
+    fields = [{**MARKSHEET_NAME[0], "on_aadhaar": "Harsh Padam Kasliwal"}]
+    label = "First name (as on Aadhaar)"
+    g = postprocess(rd("form", [label]), wr(label, "full_name"), fields, "en", "f")
+    assert g.target.value is None
+    assert "Harsh Padam Kasliwal" in g.instruction and "only the part" in g.instruction
+
+
+def test_check_compares_an_as_on_aadhaar_box_with_the_aadhaar() -> None:
+    fields = [{**MARKSHEET_NAME[0], "on_aadhaar": "Harsh Padam Kasliwal"}]
+    ok = verdict(["Name as per Aadhaar|full_name|Harsh Padam Kasliwal"], fields, "en")
+    assert "match" in ok and "doesn't look right" not in ok
+    own = verdict(["Name as per Aadhaar|full_name|x"], MARKSHEET_NAME, "en")
+    assert "check this yourself" in own

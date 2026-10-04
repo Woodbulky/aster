@@ -342,6 +342,11 @@ def readiness(db: Client, user_id: str, session: Row) -> Row:
     for key in sorted(firm, key=field_label):
         if b := best(firm[key]):
             v = candidate_view(b, by_id)
+            # A box "as per Aadhaar" takes what the Aadhaar says, even where another value won.
+            on_aadhaar = next(
+                (r for r in firm[key] if (r.get("source_ref") or {}).get("doc_type") == "aadhaar"),
+                None,
+            )
             fields.append(
                 {
                     "field_key": key,
@@ -351,6 +356,9 @@ def readiness(db: Client, user_id: str, session: Row) -> Row:
                     "value": str(b["value"]).translate(DEV_DIGITS),
                     "source": v["label"],
                     "confirmed": b["status"] == "confirmed",
+                    "on_aadhaar": str(on_aadhaar["value"]).translate(DEV_DIGITS)
+                    if on_aadhaar
+                    else None,
                 }
             )
     return {

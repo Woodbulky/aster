@@ -397,7 +397,11 @@ def verdict(boxes: list[str], fields: list[Row], lang: str) -> str:
                 unplaced += 1  # said, but what is typed in it is not repeated
             continue
         name = label or f["label"]
-        if typed and same(f["field_key"], typed, _portal(f)):
+        expected = _on_aadhaar(f) if _AS_ON_AADHAAR.search(label) else _portal(f)
+        if expected is None or (f["field_key"] == "full_name" and _NAME_PART.search(label)):
+            own.append(name)  # no Aadhaar read, or one part of a name: theirs to check
+            continue
+        if typed and same(f["field_key"], typed, expected):
             ok.append(name)
         else:
             bad.append((name, _portal(f)))
@@ -480,7 +484,8 @@ _SECRET_FIELDS = (
     (re.compile(r"pass\s*word|पासवर्ड", re.I), "login"),
     (re.compile(r"\botp\b|one[\s-]*time|ओटीपी", re.I), "otp"),
     (re.compile(r"captcha|कॅप्चा|कैप्चा", re.I), "captcha"),
-    (re.compile(r"\bcvv\b|\bpin\b|card\s*number|\bupi\b", re.I), "payment"),
+    # a PIN, not a "Pin Code" (seen live: "Current Institute Pin Code" paused a form as payment)
+    (re.compile(r"\bcvv\b|\bpin\b(?!\s*-?\s*code)|card\s*number|\bupi\b", re.I), "payment"),
 )
 # Guardrail 6: typed by the user from the document, never suggested (we only hold the last 4).
 IDENTIFIER_KEYS = {"aadhaar_last4": "aadhaar", "bank_account_last4": "bank_passbook"}
@@ -503,6 +508,27 @@ _FINAL_SUBMIT = re.compile(
     r"final\s*submit|submit\s*(the\s*)?application|अंतिम|confirm\s*submi", re.I
 )
 DOC_NAMES = {"aadhaar": "Aadhaar card", "bank_passbook": "bank passbook"}
+# "Full name (as per Aadhaar)", "आधारनुसार नाव": only the Aadhaar's own text goes in such a box
+# (seen live: the Class 10 marksheet's "KASLIWAL HARSH" suggested for "First name as on Aadhaar").
+_AS_ON_AADHAAR = re.compile(
+    r"\b(per|on|in)\s+(the\s+|your\s+)?aadh?aa?r|aadh?aa?r\s*(प्रमाणे|नुसार)"
+    r"|आधार\s*(कार्ड\s*)?(प्रमाणे|नुसार|के\s*अनुसार|अनुसार|पर)",
+    re.I,
+)
+
+
+def _on_aadhaar(f: Row) -> str | None:
+    """The field's value as read off the Aadhaar (portal format), or None if none was read."""
+    if f.get("on_aadhaar"):
+        return _portal({**f, "value": f["on_aadhaar"]})
+    return _portal(f) if _source(f) == DOC_NAMES["aadhaar"] else None
+
+
+# A box for one part of a name: a full name is never typed into it whole.
+_NAME_PART = re.compile(
+    r"\b(first|middle|last|given|sur)\s*-?\s*name|surname|पहिले नाव|मधले नाव|आडनाव|पहला नाम|उपनाम",
+    re.I,
+)
 _DIGITS = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _CHOICE_TYPES = {"dropdown", "radio"}
 
@@ -662,21 +688,31 @@ def postprocess(
         target.identifier, target.note = True, _identifier_note(target.label, doc, lang)
         said = ""  # the template only: never the writer's words near an Aadhaar/account box
     elif target and f:
-        value = _portal(f)
+        value: str | None = _portal(f)
+        source = _source(f)
         if w.value and not same(f["field_key"], f["value"], w.value):
             said = ""  # guardrail 2: it named a value that is not the checked one
-        option = None
-        if i is not None and r.fields[i].type in _CHOICE_TYPES:
-            opts = r.fields[i].options
-            option = next((o for o in opts if same(f["field_key"], f["value"], o)), value)
-        target.field_key, target.value, target.option_text = f["field_key"], value, option
-        target.source = _source(f)
+        if _AS_ON_AADHAAR.search(target.label):
+            value, source, said = _on_aadhaar(f), DOC_NAMES["aadhaar"], ""
+        target.field_key, target.source = f["field_key"], source
+        if value is None:  # no Aadhaar read: no other document stands in for it (guardrail 2)
+            target.note = (t(lang, "fill.as_on_aadhaar") or "").format(label=target.label)
+        elif f["field_key"] == "full_name" and _NAME_PART.search(target.label):
+            # Which part is the first name is the user's call: documents differ in order.
+            target.note = (t(lang, "fill.name_part") or "").format(label=target.label, value=value)
+            said = ""
+        else:
+            option = None
+            if i is not None and r.fields[i].type in _CHOICE_TYPES:
+                opts = r.fields[i].options
+                option = next((o for o in opts if same(f["field_key"], value, o)), value)
+            target.value, target.option_text = value, option
     elif w.answer_source == "checked_value":
         said = ""  # it claims a checked value it was not given
     if said and (invented_number(said, allowed) or unseen_quote(said, r, target)):
         said = ""
 
-    if target and target.identifier:
+    if target and (target.identifier or (target.note and not target.value)):
         instruction = target.note or ""
     elif target and target.value and not (question and said):
         instruction = _say(target, lang)  # the template: the checked value, in their language

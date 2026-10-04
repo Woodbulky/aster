@@ -522,3 +522,12 @@ def test_a_typed_value_must_be_in_the_users_words(mem: Mem) -> None:
     args = {"flag_id": flag["id"], "new_value": "2026", "reason": "I passed 12th in 2025"}
     assert "what the user said" in run_tool(_ctx(input_mode="text"), "resolve_flag", args).error
     assert flag["status"] == "open"
+
+
+def test_readiness_keeps_the_aadhaar_reading_for_as_per_aadhaar_boxes(mem: Mem) -> None:
+    mem.doc("ssc_marksheet", full_name="KASLIWAL HARSH")
+    rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
+    assert rows["full_name"]["on_aadhaar"] is None  # no Aadhaar read: nothing stands in for it
+    mem.doc("aadhaar", full_name="Harsh Padam Kasliwal")
+    rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
+    assert rows["full_name"]["on_aadhaar"] == "Harsh Padam Kasliwal"

@@ -40,6 +40,8 @@
   "fill.pause.payment": "This is a payment page. Please do this yourself. I'll wait.",
   "fill.pause.submit_confirm": "Review everything carefully. When you're ready, you can submit.",
   "fill.no_writer": "I can see your page, but I can't work out the next step right now. Ask me again in a moment.",
+  "fill.as_on_aadhaar": "{label}: type it exactly as printed on your Aadhaar card.",
+  "fill.name_part": "{label}: your full name is {value}. Type only the part this box asks for, as on your document.",
   "fill.doc_default": "document",
   "fill.check.ok": "On this screen these match your checked values: {labels}.",
   "fill.check.bad": "{label} doesn't look right — it should be {value}. Please check it.",
