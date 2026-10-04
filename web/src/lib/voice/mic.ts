@@ -7,6 +7,25 @@ import { motionValue } from "framer-motion";
 const VAD_ASSETS = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.31/dist/";
 const ORT_ASSETS = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
 
+let preloaded = false;
+
+/** Warms the browser cache with what hands-free needs (~15 MB, mostly the onnxruntime wasm), so the
+ * first mic tap starts at once instead of after a ~5 s download. Skipped on data-saver. */
+export function preloadVad() {
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (preloaded || conn?.saveData) return;
+  preloaded = true;
+  void import("@ricky0123/vad-web").catch(() => {});
+  // The files MicVAD fetches (vad-web uses onnxruntime-web/wasm: the plain simd-threaded build).
+  for (const url of [
+    `${VAD_ASSETS}silero_vad_v5.onnx`,
+    `${VAD_ASSETS}vad.worklet.bundle.min.js`,
+    `${ORT_ASSETS}ort-wasm-simd-threaded.mjs`,
+    `${ORT_ASSETS}ort-wasm-simd-threaded.wasm`,
+  ])
+    fetch(url, { priority: "low" } as RequestInit).catch(() => {});
+}
+
 const AUDIO: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
 
 export type MicCallbacks = {

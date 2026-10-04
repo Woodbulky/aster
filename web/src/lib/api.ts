@@ -26,6 +26,16 @@ export function clearLocalCache() {
   removeLocal(ASSISTANT_KEY, PROFILE_KEY, OWNER_KEY);
 }
 
+let woke = false;
+
+/** Render's free plan sleeps (~1 min cold start, and the first socket fails meanwhile): ping it
+ * once per page load, as early as possible, so it is awake by the time it is needed. */
+export function wakeBackend() {
+  if (woke || !API_URL) return;
+  woke = true;
+  fetch(`${API_URL}/health`, { mode: "no-cors", cache: "no-store" }).catch(() => {});
+}
+
 export async function accessToken(): Promise<string | null> {
   const { data } = await createClient().auth.getSession();
   return data.session?.access_token ?? null;

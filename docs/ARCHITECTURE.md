@@ -25,7 +25,7 @@ External: Sarvam (STT/TTS), Bhashini (fallback), Tavily (search), hosted OpenAI-
 ## Endpoint discovery
 - **GPU**: the backend reads `select url from gpu_endpoints where name='kaggle-main' and last_seen > now()-interval '3 minutes'`. The result is cached for 30 s. If there is none, it uses fallbacks.
 - **Backend URL for web**: `NEXT_PUBLIC_API_URL=https://<service>.onrender.com`. Only for the phone backup with a quick tunnel: leave it empty and the web reads `public_endpoints` row `api` (registered by `ops/phone/quick_tunnel.sh`).
-- **Render free plan sleeps after ~15 min idle** (cold start ~1 min, breaks the first WS connect). For the demo: a keep-warm pinger hitting `/health` every ~10 min (e.g. a cron job / uptime monitor), or switch to the Starter plan for demo week.
+- **Render free plan sleeps after ~15 min idle** (cold start ~1 min, breaks the first WS connect). The web pings `/health` once per page load from the landing page, `/login` and the app shell (`wakeBackend()` in `lib/api.ts`), so the server wakes while the user signs in. For the demo also run a keep-warm pinger hitting `/health` every ~10 min (e.g. cron-job.org / UptimeRobot), or switch to the Starter plan for demo week.
 
 ## Fallback chains (implemented in code, each with a timeout)
 | Capability | Chain | Timeout |

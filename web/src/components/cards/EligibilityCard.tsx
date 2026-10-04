@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, CalendarClock, CircleCheck, CircleHelp, CircleX, ExternalLink, ListChecks } from "lucide-react";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { CriterionResult, EligibilityPayload } from "@/lib/ws/protocol";
@@ -43,6 +44,7 @@ function Row({ r }: { r: CriterionResult }) {
  * (guardrail 1): the scheme authority decides. */
 export function EligibilityCard({ payload, onContinue }: { payload: EligibilityPayload; onContinue?: () => void }) {
   const c = payload.counts;
+  const [continued, setContinued] = useState(false); // a second tap would ask for a second checklist
   return (
     <section aria-label={`Eligibility check: ${payload.name}`} className="card max-w-xl p-5">
       <h2 className="flex items-start gap-2 font-heading font-semibold">
@@ -69,7 +71,15 @@ export function EligibilityCard({ payload, onContinue }: { payload: EligibilityP
       ))}
       <p className="mt-3 text-xs text-muted-foreground">{payload.note}</p>
       {onContinue && (
-        <button type="button" onClick={onContinue} className="btn-primary mt-4 h-10 px-4 text-sm">
+        <button
+          type="button"
+          disabled={continued}
+          onClick={() => {
+            setContinued(true);
+            onContinue();
+          }}
+          className="btn-primary mt-4 h-10 px-4 text-sm"
+        >
           Continue to documents <ArrowRight className="size-4" />
         </button>
       )}

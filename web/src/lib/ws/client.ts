@@ -80,6 +80,7 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
 
   useEffect(() => {
     let closed = false;
+    let historyAsked = false; // per run: a reconnect before the history lands must not load it twice
     let retry = 0;
     let timer: number | undefined;
     let happyTimer: number | undefined;
@@ -156,11 +157,16 @@ export function useSessionSocket(sessionId: string, lang: Lang) {
     }
 
     async function connect() {
-      if (!loaded.current) {
-        const history = await loadHistory(sessionId).catch(() => []);
-        if (closed) return;
-        loaded.current = true;
-        setItems(history);
+      if (!loaded.current && !historyAsked) {
+        // Side by side with the socket: what streams in first (the greeting) goes after the history.
+        historyAsked = true;
+        void loadHistory(sessionId)
+          .catch(() => [])
+          .then((history) => {
+            if (closed) return;
+            loaded.current = true;
+            setItems((xs) => [...history, ...xs]);
+          });
       }
       const token = await accessToken();
       if (closed) return;

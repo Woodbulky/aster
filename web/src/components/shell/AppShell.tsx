@@ -9,7 +9,7 @@ import { AsterMark, Avatar } from "@/components/avatar/Avatar";
 import { ConsentHost } from "@/components/consent/ConsentHost";
 import { ProfileSetup } from "@/components/profile/ProfileSetup";
 import { completion } from "@/components/profile/ProfileForm";
-import { clearLocalCache, loadMe, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
+import { clearLocalCache, loadMe, wakeBackend, type ProfileDraft, useAssistant, useProfile } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // the account has one (seen: the demo account's seeded profile was overwritten via the pop-up).
   const [meLoaded, setMeLoaded] = useState(false);
   useEffect(() => {
+    wakeBackend();
     loadMe() // local choices win; this only fills an empty cache
       .catch(console.error)
       .finally(() => setMeLoaded(true));

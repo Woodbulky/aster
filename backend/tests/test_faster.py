@@ -438,6 +438,26 @@ def test_conversation_prefers_the_brain_primary(store: FakeStore, run) -> None:
     assert seen == ["fallback"]  # Groq first by default (BRAIN_PRIMARY)
 
 
+def test_flag_answers_prefer_the_brain_primary(monkeypatch: pytest.MonkeyPatch) -> None:
+    # It runs before every reply in the flag phases: GPU-first added ~3-5 s to each one.
+    import asyncio
+
+    from app.agent import answers
+    from app.llm.client import Chunk
+
+    seen: list[dict] = []
+
+    async def llm(_s, _msgs, **kw):
+        seen.append(kw)
+        yield Chunk("fallback", {"content": '{"answers": []}'})
+
+    monkeypatch.setattr(answers, "chat_stream", llm)
+    flag = {"id": "f1", "details": {"field_label": "Income", "candidates": []}}
+    asyncio.run(answers.read_answers(Settings(_env_file=None), [flag], "ok", "", "u1", "s1"))
+    assert seen[0]["prefer"] == "fallback"
+    assert seen[0]["sensitive_kind"] == "flag_answer"  # a Groq call is still audited
+
+
 def test_already_read_pages_are_in_the_prompt(store: FakeStore, run) -> None:
     store.sessions["s1"].update(phase="research", scheme_name="Tata Pankh")
     store.add_fetched(None, "u1", "s1", {"url": PAGE_URL, "title": "P", "text": PAGE_TEXT})

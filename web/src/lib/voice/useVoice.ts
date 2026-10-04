@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Mic } from "@/lib/voice/mic";
+import { Mic, preloadVad } from "@/lib/voice/mic";
 import type { Player } from "@/lib/voice/player";
 
 type Opts = {
@@ -55,6 +55,12 @@ export function useVoice({ player, sendAudio, interrupt }: Opts) {
   }, [mic, player, sendAudio, interrupt]);
 
   useEffect(() => () => void mic.destroy(), [mic]);
+
+  // Hands-free should start at the first tap: fetch its model and runtime once the page is idle.
+  useEffect(() => {
+    const id = window.setTimeout(preloadVad, 1500);
+    return () => window.clearTimeout(id);
+  }, []);
 
   function fail(e: unknown) {
     console.error(e);

@@ -104,12 +104,17 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
     if not user_id:
         await send(ErrorMsg(code="unauthorized", message="sign in again"))
         return await ws.close(UNAUTHORIZED)
-    session = await asyncio.to_thread(repo.get_session, db, user_id, str(session_id))
+    # Side by side (they were three round trips in a row); each is scoped by user_id.
+    session, assistant, said = await asyncio.gather(
+        asyncio.to_thread(repo.get_session, db, user_id, str(session_id)),
+        asyncio.to_thread(repo.get_assistant, db, user_id),
+        asyncio.to_thread(repo.list_messages, db, user_id, str(session_id), 1),
+    )
     if not session:  # someone else's session looks the same as a missing one
         await send(ErrorMsg(code="not_found", message="session not found"))
         return await ws.close(NOT_FOUND)
 
-    assistant = await asyncio.to_thread(repo.get_assistant, db, user_id) or {}
+    assistant = assistant or {}
     name = assistant.get("assistant_name") or "Aster"
     ctx = Ctx(db=db, user_id=user_id, session=session, lang=hello.lang)
     await sync_phase(ctx, send)
@@ -266,7 +271,7 @@ async def _serve(ws: WebSocket, session_id: uuid.UUID, db: Db, s: Settings) -> N
             stt_provider=tr.provider,
         )
 
-    if not await asyncio.to_thread(repo.list_messages, db, user_id, ctx.session["id"], 1):
+    if not said:
         start(
             lambda: text_turn(
                 ui_event="Conversation started. Greet the user warmly and begin your goal."

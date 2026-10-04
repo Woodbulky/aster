@@ -76,6 +76,9 @@ async def read_answers(
             sensitive_kind="flag_answer",  # values from documents: a fallback call is audited
             user_id=user_id,
             session_id=session_id,
+            # Like the conversation, which already sends these values in its state (flag_summary):
+            # the GPU first added ~3-5 s before every reply in the flag phases.
+            prefer=s.brain_primary,
             temperature=0,
             max_tokens=400,
             response_format={"type": "json_object"},

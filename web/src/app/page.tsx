@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 
 import { AsterMark, Avatar } from "@/components/avatar/Avatar";
+import { WakeBackend } from "@/components/WakeBackend";
 
 // Logged-out visitors hitting /home are sent through /login?next=/home by the proxy.
 const START = "/home";
@@ -43,6 +44,7 @@ const PROMISES = [
 export default function Landing() {
   return (
     <div className="flex flex-1 flex-col">
+      <WakeBackend />
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 text-primary">
