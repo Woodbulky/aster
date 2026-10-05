@@ -151,10 +151,10 @@ def _mask_ids(page: Page, raw: list[tuple[str, list[float] | None]]) -> bytes:
     fine for printed digits, pad more if a real scan shows digits."""
     pix = pymupdf.Pixmap(page.png)
     hit = False
-    for text, bbox in raw:
+    for i, (text, bbox) in enumerate(raw):
         if not bbox:
             continue
-        for m in id_numbers(text):
+        for m in id_numbers(text, raw[i - 1][0] if i else ""):
             x0, y0, x1, y1 = bbox
             w = (x1 - x0) / max(len(text), 1)
             left = x0 + w * (m.start() - 1)  # one char of slack: widths are uneven
@@ -190,12 +190,13 @@ async def read_lines(
         masked = _mask_ids(page, [(t, b) for t, _, b in raw])
         page.masked = masked != page.png
         page.png = masked
-        for text, conf, bbox in raw:
+        for i, (text, conf, bbox) in enumerate(raw):
+            above = raw[i - 1][0] if i else ""
             lines.append(
                 {
                     "id": f"L{len(lines)}",
                     "page": pi,
-                    "text": redact_ids(re.sub(r"\s+", " ", text)),
+                    "text": redact_ids(re.sub(r"\s+", " ", text), above),
                     "confidence": round(conf, 3),
                     "bbox": bbox,
                 }

@@ -494,12 +494,36 @@ def reread_after(flag: Row) -> str | None:
     return None
 
 
+def _in_english(key: str, name: str, rows: list[Row], docs: dict[str, Row]) -> Row:
+    """A Devanagari name's twin in English letters from another source, for English portal boxes
+    (seen live: the Aadhaar's Marathi name read cleanly, its English line as "Kanik Uilmp
+    Kolcait", and an English "First name (as on Aadhaar)" box got nothing to offer)."""
+    if KIND.get(key) != "name":
+        return {}
+    twin = next((r for r in rows if names.same_name_in_english(name, str(r["value"]))), None)
+    if not twin:
+        return {}
+    return {
+        "in_english": str(twin["value"]),
+        "in_english_source": candidate_view(twin, docs)["label"],
+    }
+
+
 def readiness(db: Client, user_id: str, session: Row) -> Row:
     """The readiness card: every value the form will use, with its source, and what still blocks.
     Ready = no open blocking flag (acknowledged ones are listed with the user's reason)."""
     live, by_id, eff, firm = _load(db, user_id, session["id"])
     flags = repo.list_flags(db, user_id, session["id"])
     open_ = [f for f in flags if f["status"] == "open"]
+    # Every value not rejected, from a current document, older than a confirmation too: an
+    # English twin of a confirmed Devanagari name is the same name, not a losing contradiction.
+    # ponytail: a second read of field_values; return the rows from _load if this gets hot.
+    live_ids = {d["id"] for d in live.values()}
+    standing: dict[str, list[Row]] = {}
+    for r in repo.list_field_values(db, user_id, session["id"]):
+        doc = (r.get("source_ref") or {}).get("document_id")
+        if r["status"] != "rejected" and (r["source_type"] != "document" or doc in live_ids):
+            standing.setdefault(r["field_key"], []).append(r)
     reqs = requirement_rows(db, user_id, session, eff=eff, docs=list(by_id.values()))
     read = [r for r in reqs if r["status"] == "extracted"]
     fields = []
@@ -525,6 +549,9 @@ def readiness(db: Client, user_id: str, session: Row) -> Row:
                     "on_aadhaar": str(on_aadhaar["value"]).translate(DEV_DIGITS)
                     if on_aadhaar
                     else None,
+                    **_in_english(
+                        key, str((on_aadhaar or b)["value"]), standing.get(key, []), by_id
+                    ),
                 }
             )
     return {

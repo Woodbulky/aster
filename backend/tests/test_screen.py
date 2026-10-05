@@ -673,3 +673,26 @@ def test_check_compares_an_as_on_aadhaar_box_with_the_aadhaar() -> None:
     assert "match" in ok and "doesn't look right" not in ok
     own = verdict(["Name as per Aadhaar|full_name|x"], MARKSHEET_NAME, "en")
     assert "check this yourself" in own
+
+
+# Seen live: the Aadhaar's Marathi name read cleanly, its English line as "Kanik Uilmp Kolcait";
+# an English "First name (as on Aadhaar)" box then had nothing to offer.
+MARATHI_NAME = [
+    {"field_key": "full_name", "label": "Full name", "value": "कार्तिक दिलीप कोकाटे", "source": "Your choice", "on_aadhaar": "कार्तिक दिलीप कोकाटे", "in_english": "KARTIK DILIP KOKATE", "in_english_source": "Class 10 marksheet · L3"},
+]  # fmt: skip
+
+
+def test_an_english_box_gets_the_english_twin_of_a_devanagari_name() -> None:
+    label = "Name as per Aadhaar"
+    g = postprocess(rd("form", [label]), wr(label, "full_name"), MARATHI_NAME, "en", "f")
+    assert g.target.value == "KARTIK DILIP KOKATE"
+    assert "Class 10 marksheet" in g.target.source and "Aadhaar" in g.target.source
+    label = "आधारनुसार नाव"  # a Devanagari box keeps the Aadhaar's own text
+    g = postprocess(rd("form", [label]), wr(label, "full_name"), MARATHI_NAME, "en", "f")
+    assert g.target.value == "कार्तिक दिलीप कोकाटे"
+    label = "First name (as on Aadhaar)"
+    g = postprocess(rd("form", [label]), wr(label, "full_name"), MARATHI_NAME, "en", "f")
+    assert g.target.value is None
+    assert "KARTIK DILIP KOKATE" in g.instruction and "only the part" in g.instruction
+    ok = verdict(["Name as per Aadhaar|full_name|KARTIK DILIP KOKATE"], MARATHI_NAME, "en")
+    assert "match" in ok and "doesn't look right" not in ok

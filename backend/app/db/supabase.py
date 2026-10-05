@@ -91,22 +91,25 @@ _CERT_LABEL = re.compile(
 _ID_WORDS = re.compile(r"aadha+r|आधार|uid|account|a/c|खाते|खाता|बँक|बैंक|bank", re.I)
 
 
-def _is_id(text: str, m: re.Match[str]) -> bool:
+def _is_id(text: str, m: re.Match[str], above: str = "") -> bool:
+    """above: the line before, for OCR that puts the label on its own line (seen live: "क्रमांक",
+    then the number)."""
     if len(re.sub(r"\D", "", m.group())) == 12:
         return True
-    before = text[max(0, m.start() - 40) : m.start()]
+    before = f"{above} {text[: m.start()]}"[-40:]
     return not _CERT_LABEL.search(before) or bool(_ID_WORDS.search(before))
 
 
-def id_numbers(text: str) -> list[re.Match[str]]:
+def id_numbers(text: str, above: str = "") -> list[re.Match[str]]:
     """The Aadhaar/bank-like numbers in text (guardrail 6), not a labelled certificate number."""
-    return [m for m in _ID_NUMBER.finditer(text) if _is_id(text, m)]
+    return [m for m in _ID_NUMBER.finditer(text) if _is_id(text, m, above)]
 
 
-def redact_ids(text: str) -> str:
+def redact_ids(text: str, above: str = "") -> str:
     """Guardrail 6: keep only the last 4 digits of an Aadhaar/bank-like number."""
     return _ID_NUMBER.sub(
-        lambda m: f"[number ending {m.group()[-4:]}]" if _is_id(text, m) else m.group(), text
+        lambda m: f"[number ending {m.group()[-4:]}]" if _is_id(text, m, above) else m.group(),
+        text,
     )
 
 

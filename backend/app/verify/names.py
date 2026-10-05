@@ -103,5 +103,20 @@ def compare(a: str, b: str) -> tuple[float, Band]:
     return s, band(s)
 
 
+def in_devanagari(text: str) -> bool:
+    return bool(_DEVANAGARI.search(text))
+
+
+def same_name_in_english(name: str, other: str) -> bool:
+    """other is name written in English letters: every word matches and none is missing
+    ("KARTIK DILIP KOKATE" for "कार्तिक दिलीप कोकाटे"; not "Kartik Kokate")."""
+    return (
+        in_devanagari(name)
+        and not in_devanagari(other)
+        and len(tokens(name)) == len(tokens(other))
+        and band(score(name, other)) == "match"
+    )
+
+
 def normalized(name: str) -> str:
     return " ".join(sorted(tokens(name)))

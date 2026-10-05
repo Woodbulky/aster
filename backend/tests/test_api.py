@@ -290,3 +290,12 @@ def test_put_profile_skips_unchanged_fields(api, monkeypatch: pytest.MonkeyPatch
     body = {"full_name": "Asha Patil", "district": "Pune"}
     assert c.put("/api/profile", json=body, headers=AUTH).status_code == 200
     assert calls[0] == ("update_profile", ("u1", {"district": "Pune"}))
+
+
+def test_redact_ids_reads_a_label_on_the_line_above() -> None:
+    # Seen live: GPU OCR put "क्रमांक" on its own line, the certificate number on the next.
+    assert repo.redact_ids("४२०३१४५७१५८", "क्रमांक") == "४२०३१४५७१५८"
+    assert repo.redact_ids("42031458382", "तहसीलदार कार्यालय") == "[number ending 8382]"
+    assert repo.redact_ids("123456789012", "क्रमांक") == "[number ending 9012]"
+    assert repo.redact_ids("12345678901", "आधार क्रमांक") == "[number ending 8901]"
+    assert repo.redact_ids("12345678901", "खाते क्रमांक") == "[number ending 8901]"

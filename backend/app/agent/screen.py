@@ -30,6 +30,7 @@ from app.llm.client import LLMUnavailable, Provider, chat_stream
 from app.speech.stream import Speaker
 from app.verify.checks import readiness
 from app.verify.contradictions import same
+from app.verify.names import in_devanagari
 from app.verify.validator import DEV_DIGITS, KIND, numbers, parse_date
 from app.ws.protocol import AgentState, AssistantMessage, Guidance, GuideField, PauseGuidance
 
@@ -157,7 +158,12 @@ class Written(BaseModel):
 def _model_fields(fields: list[Row]) -> list[Row]:
     """Identifiers are left out: the model never sees even their last 4 digits."""
     return [
-        {"field_key": f["field_key"], "label": f["label"], "value": _portal(f)}
+        {
+            "field_key": f["field_key"],
+            "label": f["label"],
+            "value": _portal(f),
+            **({"in_english_letters": f["in_english"]} if f.get("in_english") else {}),
+        }
         for f in fields
         if f["field_key"] not in IDENTIFIER_KEYS
     ]
@@ -397,7 +403,11 @@ def verdict(boxes: list[str], fields: list[Row], lang: str) -> str:
                 unplaced += 1  # said, but what is typed in it is not repeated
             continue
         name = label or f["label"]
-        expected = _on_aadhaar(f) if _AS_ON_AADHAAR.search(label) else _portal(f)
+        expected = (
+            _on_aadhaar(f, label)
+            if _AS_ON_AADHAAR.search(label)
+            else _portal({**f, "value": _english(str(f["value"]), f, label)})
+        )
         if expected is None or (f["field_key"] == "full_name" and _NAME_PART.search(label)):
             own.append(name)  # no Aadhaar read, or one part of a name: theirs to check
             continue
@@ -517,11 +527,25 @@ _AS_ON_AADHAAR = re.compile(
 )
 
 
-def _on_aadhaar(f: Row) -> str | None:
-    """The field's value as read off the Aadhaar (portal format), or None if none was read."""
+def _on_aadhaar(f: Row, label: str = "") -> str | None:
+    """The field's value as read off the Aadhaar (portal format), or None if none was read. An
+    English box gets the same name in English letters when the Aadhaar was read in Devanagari."""
     if f.get("on_aadhaar"):
-        return _portal({**f, "value": f["on_aadhaar"]})
-    return _portal(f) if _source(f) == DOC_NAMES["aadhaar"] else None
+        return _portal({**f, "value": _english(f["on_aadhaar"], f, label)})
+    return (
+        _portal({**f, "value": _english(str(f["value"]), f, label)})
+        if _source(f) == DOC_NAMES["aadhaar"]
+        else None
+    )
+
+
+def _english(value: str, f: Row, label: str) -> str:
+    """A Devanagari name -> its checked English twin (checks._in_english) for a box labelled in
+    English letters; anything else unchanged."""
+    twin = f.get("in_english")
+    if twin and in_devanagari(value) and not in_devanagari(label):
+        return str(twin)
+    return value
 
 
 # A box for one part of a name: a full name is never typed into it whole.
@@ -531,6 +555,10 @@ _NAME_PART = re.compile(
 )
 _DIGITS = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _CHOICE_TYPES = {"dropdown", "radio"}
+
+
+def _values(f: Row) -> list[str]:
+    return [str(v) for v in (f["value"], f.get("in_english")) if v]
 
 
 def _source(f: Row) -> str:
@@ -688,12 +716,15 @@ def postprocess(
         target.identifier, target.note = True, _identifier_note(target.label, doc, lang)
         said = ""  # the template only: never the writer's words near an Aadhaar/account box
     elif target and f:
-        value: str | None = _portal(f)
+        value: str | None = _portal({**f, "value": _english(str(f["value"]), f, target.label)})
         source = _source(f)
-        if w.value and not same(f["field_key"], f["value"], w.value):
+        if w.value and not any(same(f["field_key"], v, w.value) for v in _values(f)):
             said = ""  # guardrail 2: it named a value that is not the checked one
         if _AS_ON_AADHAAR.search(target.label):
-            value, source, said = _on_aadhaar(f), DOC_NAMES["aadhaar"], ""
+            value, source, said = _on_aadhaar(f, target.label), DOC_NAMES["aadhaar"], ""
+        if value and value == f.get("in_english") and value != f["value"]:
+            # the English letters come from another document: say which (guardrail 2)
+            source = f"{f.get('in_english_source') or ''}, same name as your {source}".strip(", ")
         target.field_key, target.source = f["field_key"], source
         if value is None:  # no Aadhaar read: no other document stands in for it (guardrail 2)
             target.note = (t(lang, "fill.as_on_aadhaar") or "").format(label=target.label)

@@ -594,6 +594,17 @@ def test_readiness_keeps_the_aadhaar_reading_for_as_per_aadhaar_boxes(mem: Mem) 
     assert rows["full_name"]["on_aadhaar"] == "Harsh Padam Kasliwal"
 
 
+def test_readiness_finds_the_english_twin_of_a_devanagari_name(mem: Mem) -> None:
+    mem.doc("aadhaar", full_name="कार्तिक दिलीप कोकाटे")
+    mem.doc("ssc_marksheet", full_name="Kartik Kokate")  # a word missing: not the same name
+    rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
+    assert "in_english" not in rows["full_name"]
+    mem.doc("hsc_marksheet", full_name="KARTIK DILIP KOKATE")
+    rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
+    assert rows["full_name"]["in_english"] == "KARTIK DILIP KOKATE"
+    assert rows["full_name"]["in_english_source"].startswith("Class 12 marksheet")
+
+
 def test_answer_requirement_tool_needs_the_users_words(
     mem: Mem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
