@@ -14,8 +14,7 @@ from app.db import supabase as repo
 from app.research.packs import current_cycle, portals, usable_packs
 
 MAX_OPTIONS = 6
-PACK_NAME_MATCH = 90
-PACK_NAME_MARGIN = 10
+PACK_WORD_MATCH = 85
 SUGGEST_NOTE = (
     "Ranked by how many official criteria your profile meets. Not a decision: the scheme "
     "authority decides. Another scholarship? Just tell me its name."
@@ -129,29 +128,37 @@ _NOISE = {
 }
 
 
-def _words(text: str) -> str:
+def _words(text: str) -> list[str]:
     """Whole words minus generic ones and numbers. Devanagari stays whole: default_process splits
     it at every vowel sign, so any two Hindi/Marathi names shared a one-letter "word"."""
     words = re.findall(r"[\wऀ-ॿ]+", text.casefold())
-    return " ".join(w for w in words if w not in _NOISE and not w.isdigit())
+    return [w for w in words if w not in _NOISE and not w.isdigit()]
+
+
+def _same(said: str, word: str) -> bool:
+    """One typed word is this name word: exact for short ones ("sc", "lic"), a typo away for
+    longer ones ("relaince")."""
+    return said == word or (len(word) >= 5 and fuzz.ratio(said, word) >= PACK_WORD_MATCH)
 
 
 def pack_for_name(name: str) -> str | None:
     """The pack a typed scheme name clearly means ("Shahu Maharaj EBC" -> the EBC pack), or None
     when no pack or more than one fits (e.g. "post matric scholarship": SC, ST and OBC packs).
-    Seen live: the typed name went to web research and saved a rule from another scheme's page."""
-
-    if not (said := _words(name)):
+    Seen live: the typed name went to web research and saved a rule from another scheme's page.
+    Whole words only: "hi" picked the EBC pack as a piece of "Shikshan" (seen live). A pack needs
+    two of its name words, or one when the message is just the name ("LIC", "EBC")."""
+    said = _words(name)
+    if not said:
         return None
 
-    def fit(p: Any) -> float:
-        names = [w for n in (p.name.en, p.name.mr, p.name.hi) if n and (w := _words(n))]
-        return max((fuzz.partial_token_set_ratio(said, n) for n in names), default=0)
+    def fit(p: Any) -> int:
+        names = [set(_words(n)) for n in (p.name.en, p.name.mr, p.name.hi) if n]
+        return max((sum(any(_same(w, x) for w in said) for x in n) for n in names), default=0)
 
     scores = sorted(((fit(p), k) for k, p in usable_packs().items()), reverse=True)
-    if not scores or scores[0][0] < PACK_NAME_MATCH:
+    if not scores or scores[0][0] < (1 if len(said) <= 2 else 2):
         return None
-    if len(scores) > 1 and scores[0][0] - scores[1][0] < PACK_NAME_MARGIN:
+    if len(scores) > 1 and scores[0][0] == scores[1][0]:
         return None
     return scores[0][1]
 

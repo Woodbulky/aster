@@ -473,6 +473,11 @@ def test_typed_scheme_name_finds_its_pack(monkeypatch: pytest.MonkeyPatch) -> No
     assert forms.pack_for_name("OBC aid") == "demo.obc_aid"
     assert forms.pack_for_name("Reliance Foundation scholarship") is None
     assert forms.pack_for_name("scholarship") is None  # ambiguous: no guess
+    # Seen live: "hi" picked a pack as a piece of "Shikshan"; small talk names no scheme.
+    for said in ("hi", "Hi Aster", "ok", "I am OBC", "I am open category"):
+        assert forms.pack_for_name(said) is None, said
+    assert forms.pack_for_name("OBC") == "demo.obc_aid"  # just the name
+    assert forms.pack_for_name("I want the open merit aid") == "demo.open_merit"
     # Seen: the only usable pack was picked for "LIC scholarship" on the word "scholarship".
     only = {"demo.obc_aid": forms.usable_packs()["demo.obc_aid"]}
     monkeypatch.setattr(forms, "usable_packs", lambda: only)
