@@ -696,3 +696,14 @@ def test_an_english_box_gets_the_english_twin_of_a_devanagari_name() -> None:
     assert "KARTIK DILIP KOKATE" in g.instruction and "only the part" in g.instruction
     ok = verdict(["Name as per Aadhaar|full_name|KARTIK DILIP KOKATE"], MARATHI_NAME, "en")
     assert "match" in ok and "doesn't look right" not in ok
+
+
+def test_a_phone_box_gets_the_profile_number_the_model_never_sees() -> None:
+    # seen live: "add your phone number" with one saved in the profile
+    from app.agent.screen import _model_fields
+
+    fields = [{"field_key": "mobile", "label": "Mobile", "value": "9876543210", "source": "Your profile", "on_aadhaar": None}]  # fmt: skip
+    assert "9876543210" not in str(_model_fields(fields))
+    w = wr("Mobile Number", "mobile", "Type your mobile number", "(on file)")
+    g = postprocess(rd("form", ["Mobile Number"]), w, fields, "en", "f")
+    assert g.target.value == "9876543210" and g.target.source == "Your profile"

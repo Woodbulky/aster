@@ -42,6 +42,7 @@ PROFILE_KEYS = (
     "current_year",
     "institute_name",
     "aadhaar_last4",
+    "mobile",  # seen live: a phone box got "add your phone number" with one in the profile
 )
 SOURCE_LABEL = {
     "profile": "Your profile",

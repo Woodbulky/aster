@@ -155,13 +155,18 @@ class Written(BaseModel):
     instruction: str = ""
 
 
+# The model picks the box; the value shown comes from the checked fields, never from its words.
+# Like the chat (profile.MASKED), it doesn't need to see a phone number to do that.
+HIDDEN_FROM_MODEL = {"mobile": "(on file)"}
+
+
 def _model_fields(fields: list[Row]) -> list[Row]:
     """Identifiers are left out: the model never sees even their last 4 digits."""
     return [
         {
             "field_key": f["field_key"],
             "label": f["label"],
-            "value": _portal(f),
+            "value": HIDDEN_FROM_MODEL.get(f["field_key"]) or _portal(f),
             **({"in_english_letters": f["in_english"]} if f.get("in_english") else {}),
         }
         for f in fields

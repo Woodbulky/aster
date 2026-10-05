@@ -594,6 +594,12 @@ def test_readiness_keeps_the_aadhaar_reading_for_as_per_aadhaar_boxes(mem: Mem) 
     assert rows["full_name"]["on_aadhaar"] == "Harsh Padam Kasliwal"
 
 
+def test_readiness_has_the_profile_mobile(mem: Mem) -> None:
+    mem.profile["mobile"] = "9876543210"
+    rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
+    assert rows["mobile"]["value"] == "9876543210" and rows["mobile"]["source"] == "Your profile"
+
+
 def test_readiness_finds_the_english_twin_of_a_devanagari_name(mem: Mem) -> None:
     mem.doc("aadhaar", full_name="कार्तिक दिलीप कोकाटे")
     mem.doc("ssc_marksheet", full_name="Kartik Kokate")  # a word missing: not the same name
