@@ -74,18 +74,26 @@
         "hi": ""
       },
       "logic": {
-        "!!": [
+        "or": [
           {
-            "var": "profile.ssc_year"
+            "!!": [
+              {
+                "var": "profile.ssc_year"
+              }
+            ]
+          },
+          {
+            "!!": [
+              {
+                "var": "profile.entry_qualification"
+              }
+            ]
           }
         ]
       },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
         "quote": "Minimum 10th Pass"
-      },
-      "ask_if_unknown": {
-        "field_key": "ssc_year"
       }
     },
     {
@@ -95,7 +103,40 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.back_to_back_drop"
+          },
+          "no"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
+        "quote": "Back to back drop for 2 years he/she will not be allowed to fill form."
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "professional_course",
+      "text": {
+        "en": "Is your course a professional course (as the scheme defines it)?",
+        "mr": "तुमचा अभ्यासक्रम (योजनेनुसार) व्यावसायिक अभ्यासक्रम आहे का?",
+        "hi": "क्या आपका कोर्स (योजना के अनुसार) व्यावसायिक कोर्स है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
+        "quote": "Professional Course selected than caste validity certificate mandatory"
+      }
+    },
+    {
+      "id": "back_to_back_drop",
+      "text": {
+        "en": "Did you drop out of studies for two years in a row?",
+        "mr": "तुम्ही सलग दोन वर्षे शिक्षण सोडले होते का?",
+        "hi": "क्या आपने लगातार दो साल पढ़ाई छोड़ी थी?"
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
         "quote": "Back to back drop for 2 years he/she will not be allowed to fill form."
@@ -104,6 +145,7 @@
   ],
   "documents": [
     {
+      "id": "caste_certificate",
       "doc_type": "caste_certificate",
       "required": true,
       "required_if": null,
@@ -118,6 +160,7 @@
       }
     },
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -129,9 +172,11 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
         "quote": "Income Certificate"
-      }
+      },
+      "holder": "either"
     },
     {
+      "id": "previous_year_marksheet",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -143,12 +188,25 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A668ED132B54E2162E54C475F826D85C79DA948301E5F7772",
         "quote": "Previous year's marksheet"
+      },
+      "period": {
+        "en": "previous academic year",
+        "mr": "मागील शैक्षणिक वर्ष",
+        "hi": "पिछला शैक्षणिक वर्ष"
       }
     },
     {
+      "id": "caste_validity",
       "doc_type": "caste_validity",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.professional_course"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Caste validity certificate (mandatory for professional courses)",
         "mr": "",

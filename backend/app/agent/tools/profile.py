@@ -14,6 +14,8 @@ MASKED = ("caste", "religion", "mobile", "aadhaar_last4")
 CHOICES: dict[str, tuple[str, ...]] = {
     "gender": ("Female", "Male", "Transgender"),
     "category": ("Open", "OBC", "SC", "ST", "VJ/NT", "SBC", "SEBC", "EWS"),
+    "entry_qualification": ("ssc", "hsc", "diploma", "graduation"),
+    "course_mode": ("regular", "part_time", "distance", "online"),
 }
 
 
@@ -42,7 +44,12 @@ class ProposeArgs(BaseModel):
         description=f"field_key -> value the user said. Keys: {', '.join(ProfileIn.model_fields)}. "
         "Dates YYYY-MM-DD, numbers as plain digits, text in English letters as on documents "
         "(पुणे -> Pune). gender: Female|Male|Transgender. "
-        "category: Open|OBC|SC|ST|VJ/NT|SBC|SEBC|EWS."
+        "category: Open|OBC|SC|ST|VJ/NT|SBC|SEBC|EWS. "
+        "entry_qualification (what the current course was joined after): ssc = after 10th "
+        "(diploma, ITI, 11th-12th) | hsc = after 12th | diploma = after a diploma (lateral entry) "
+        "| graduation = after a degree. "
+        "course_mode: regular|part_time|distance|online. "
+        "admission_year: the year the current course was joined."
     )
     evidence: Literal["voice", "text"] = "text"
 

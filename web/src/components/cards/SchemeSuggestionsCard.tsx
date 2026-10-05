@@ -31,7 +31,7 @@ export function SchemeSuggestionsCard({
                 <span className="mt-1 flex flex-wrap gap-1.5 text-xs">
                   <span className="chip bg-sage">{o.met} meet</span>
                   {o.not_met > 0 && <span className="chip bg-[#fde8e8]">{o.not_met} do not meet</span>}
-                  {o.unknown > 0 && <span className="chip bg-[#fdf3dc]">{o.unknown} unknown</span>}
+                  {o.unknown > 0 && <span className="chip bg-[#fdf3dc]">{o.unknown} to confirm</span>}
                   {o.draft && <span className="chip bg-peach">Draft</span>}
                 </span>
               </span>

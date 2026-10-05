@@ -14,6 +14,7 @@ Tick the box when its acceptance criteria are verified.
 - [ ] M7 Guided form filling (screen share, PiP, guidance) — built; acceptance verified live over the real WS + model + TTS with mock-portal screenshots; browser click-through (share picker, PiP, Private mode, mic) and GPU latency pending
 - [x] M8 Audit, consent, profile page, polish — UI stays English (user decision); i18n = agent/card text only
 - [ ] M9 Demo hardening
+- [ ] Scheme requirements + per-cycle catalogue (2026-10-05) — code done: requirement ids/conditions/questions, cycle-scoped packs and research, freshness labels; open: a human verifies 2–3 packs for 2026-27 (until then prod has 0 usable packs)
 
 ---
 

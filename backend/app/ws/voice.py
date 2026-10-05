@@ -71,6 +71,13 @@ BAD_HELLO, UNAUTHORIZED, NOT_FOUND = 4400, 4401, 4404
 UI_EVENT_TEXT = {
     "profile_confirmed": "The user confirmed the profile card; those values are now saved.",
     "profile_rejected": "The user said the card's values are not right. Ask what to correct.",
+    "requirement_answered": "The user answered a document question on the checklist card (the "
+    "answer is their last message; it is already saved). In a few words, say what it means for "
+    "their documents. If another question is open, ask it.",
+    "eligibility_answered": "The user answered a question on the eligibility card (the answer is "
+    "their last message; it is already saved and the card is updated). In a few words, say how "
+    "that criterion reads now, per the source, never as a final verdict. If another criterion "
+    "still needs confirmation, ask the first of its needs.",
 }
 
 
@@ -423,8 +430,8 @@ async def _form_selected(ctx: Ctx, send, payload: dict, turn) -> None:
         note = (
             f"The user picked {name}. The eligibility card is on screen: {criteria}. Summarise it "
             "in 2-3 short sentences per the official source, never as a final verdict, and if a "
-            "criterion is unknown with an ask_field, ask for that one value. Do not call "
-            "check_eligibility again."
+            "criterion needs confirmation, ask for the first of its needs (one question). Do "
+            "not call check_eligibility again."
         )
     else:
         note = f"The user picked {name} from the suggestions card."

@@ -12,6 +12,7 @@ from app.config import Settings
 from app.research import fetch as fetch_mod
 from app.research import packs, search
 from app.research.fetch import FetchError, Page, check_url, excerpt, quote_in
+from app.verify import requirements
 from tests.conftest import COMPLETE_PROFILE, FakeStore
 from tests.test_agent import FakeLLM, call, ctx, kinds, text
 
@@ -234,6 +235,47 @@ def test_drafts_only_in_dev() -> None:
     )
 
 
+def test_verified_packs_are_for_this_cycle_only() -> None:
+    # Last year's rules are not offered as verified: the student would follow the wrong year.
+    assert packs.usable_packs(Settings(_env_file=None, academic_year="2027-28")) == {}
+    pack = packs.all_packs()["demo.obc_aid"]
+    with pytest.raises(ValueError, match="academic_year, apply_url"):
+        packs.Pack.model_validate(pack.model_dump() | {"apply_url": None})
+
+
+def test_freshness_clocks() -> None:
+    from datetime import date
+
+    pack = packs.all_packs()["demo.obc_aid"]  # rules + deadlines checked 2026-10-03
+    s = Settings(_env_file=None)
+    f = packs.freshness(pack, s, date(2026, 10, 10))
+    assert (f["rules_stale"], f["deadlines_stale"]) == (False, False)
+    f = packs.freshness(pack, s, date(2026, 11, 1))  # deadlines are rechecked every 14 days
+    assert (f["rules_stale"], f["deadlines_stale"]) == (False, True)
+    f = packs.freshness(pack, s, date(2027, 5, 1))  # rules every 180
+    assert f["rules_stale"] and f["rules_checked_on"] == "2026-10-03"
+    draft = packs.all_packs()["demo.draft_one"]
+    assert packs.freshness(draft, s)["rules_stale"]  # never checked
+
+
+def test_portal_url_per_cycle() -> None:
+    src = {
+        "url": "https://mahadbt.maharashtra.gov.in/home/index",
+        "quote": "Applications for 2026-27",
+    }
+    cyc = {"url": "https://mahadbt2.maharashtra.gov.in/", "source": src}
+    p = packs.Portal(name="M", url="https://mahadbt.maharashtra.gov.in", cycles={"2026-27": cyc})
+    assert p.url_for("2026-27") == "https://mahadbt2.maharashtra.gov.in/"
+    assert p.url_for("2025-26") == "https://mahadbt.maharashtra.gov.in"
+
+
+def test_validate_checks_the_cycle_of_verified_packs(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert packs.validate(online=False) == []
+    monkeypatch.setenv("ACADEMIC_YEAR", "2027-28")
+    problems = packs.validate(online=False)
+    assert any("verified for 2026-27, not 2027-28" in p for p in problems)
+
+
 # ---------- eligibility ----------
 def test_check_eligibility_card(store: FakeStore) -> None:
     store.profile.update(COMPLETE_PROFILE)
@@ -245,9 +287,10 @@ def test_check_eligibility_card(store: FakeStore) -> None:
     assert by_id["obc"]["reason"] == "Meets this — per scholarships.demo.gov.in"
     assert by_id["domicile"]["status"] == "unknown"
     assert by_id["domicile"]["ask_field"] == "domicile_state"
-    assert by_id["attendance"]["reason"].startswith("Unknown — Aster can't check this")
+    assert by_id["attendance"]["reason"].startswith("Needs confirmation — Aster can't check this")
+    assert by_id["attendance"]["needs"] == [{"kind": "read", "text": "75% attendance"}]
     assert by_id["obc"]["source"]["quote"] == "Applicant should belong to OBC category."
-    assert p["counts"] == {"met": 2, "not_met": 0, "unknown": 2}
+    assert p["counts"] == {"met": 2, "not_met": 0, "unknown": 2, "not_applicable": 0}
     assert p["deadlines"][0]["passed"] is True
     # guardrail 1: no final verdict anywhere in what the user or the LLM sees
     blob = json.dumps([p, res.data["criteria"]]).lower()
@@ -290,6 +333,47 @@ def test_save_research_keeps_quoted_items(store: FakeStore, page: dict) -> None:
         ("eligibility", "live", "Tata Pankh"),
         ("documents", "live", "Tata Pankh"),
     }
+
+
+def test_saved_documents_are_requirements_and_years_must_be_on_the_page(
+    store: FakeStore, page: dict
+) -> None:
+    quote = "Income certificate issued by the Tahsildar."
+    page["via"] = "search"  # shared with later students
+    items = [
+        _item(year_on_page="2026-27"),  # the page states no year: dropped, not believed
+        _item(kind="documents", text="Income certificate", quote=quote, required="if",
+              condition="your parents are salaried, form 1234 5678 9012",
+              doc_types=["income_certificate"]),
+    ]  # fmt: skip
+    res = run_tool(ctx(store), "save_research", {"items": items})
+    assert "year_on_page" not in res.card.payload["eligibility"][0]
+    doc = res.card.payload["documents"][0]
+    assert (doc["required"], doc["doc_types"]) == ("if", ["income_certificate"])
+    [r] = requirements.from_live([doc], "2026-27")
+    # the model's own words go through redact_ids before other students see them
+    shared = store.cache[0]["items"]["documents"][0]["condition"]
+    assert "1234 5678" not in shared and shared.startswith("your parents are salaried")
+    assert r.questions[0]["text"].startswith("Does this apply to you? Only if: your parents")
+
+    store.add_fetched(None, "u1", "s1", {"url": PAGE_URL + "/old", "title": "P",
+                                         "text": PAGE_TEXT + " Scheme for 2025-26."})  # fmt: skip
+    old = _item(content_id="fc2", source_url=PAGE_URL + "/old", year_on_page="2025-26")
+    item = run_tool(ctx(store), "save_research", {"items": [old]}).card.payload["eligibility"][0]
+    assert item["year_on_page"] == "2025-26"
+    assert "the page is about 2025-26, not 2026-27" in requirements.year_note(item, "2026-27")
+
+
+@pytest.mark.parametrize(
+    "today,cycle",
+    [("2026-10-05", "2026-27"), ("2027-05-31", "2026-27"), ("2027-06-01", "2027-28")],
+)
+def test_current_cycle(today: str, cycle: str) -> None:
+    from datetime import date
+
+    by_date = Settings(_env_file=None, academic_year="")  # conftest pins ACADEMIC_YEAR
+    assert packs.current_cycle(by_date, date.fromisoformat(today)) == cycle
+    assert packs.current_cycle(Settings(_env_file=None, academic_year="2025-26")) == "2025-26"
 
 
 @pytest.mark.parametrize(
@@ -351,7 +435,12 @@ def test_live_research_turn(store: FakeStore, run, monkeypatch: pytest.MonkeyPat
     assert [c.kind for c in cards] == ["research_summary", "eligibility"]
     assert [i["text"] for i in cards[0].payload["eligibility"]] == ["Income < 4L"]  # fake dropped
     elig = cards[1].payload
-    assert elig["origin"] == "live" and elig["counts"] == {"met": 0, "not_met": 0, "unknown": 1}
+    assert elig["origin"] == "live" and elig["counts"] == {
+        "met": 0,
+        "not_met": 0,
+        "unknown": 1,
+        "not_applicable": 0,
+    }
     assert elig["results"][0]["reason"].startswith("Unverified — from scholarships.example.gov.in")
     # the LLM saw the page as data, focused on the scheme text, with a content_id
     fetched = json.loads(llm.calls[2]["messages"][-1]["content"])["data"]

@@ -15,7 +15,9 @@ def _health(**env: str) -> dict:
 
 
 def test_health() -> None:
-    assert _health() == {
+    h = _health()
+    assert isinstance(h["packs"].pop("stale"), int)  # how many depends on today's date
+    assert h == {
         "status": "ok",
         "version": VERSION,
         "llm": {"primary": "gpu", "active": "none"},
@@ -27,7 +29,8 @@ def test_health() -> None:
             "sarvam_tts": "missing",
             "tavily": "missing",
         },
-        "packs": {"usable": 2, "total": 3},  # fixture packs: 2 verified + 1 draft
+        # fixture packs: 2 verified (for 2026-27, the cycle conftest pins) + 1 draft
+        "packs": {"usable": 2, "total": 3, "cycle": "2026-27"},
     }
 
 
@@ -45,7 +48,8 @@ def test_health_provider_states() -> None:
 
 
 def test_health_drafts_dev_only() -> None:
-    assert _health(packs_include_draft="true")["packs"] == {"usable": 3, "total": 3}
+    p = _health(packs_include_draft="true")["packs"]
+    assert (p["usable"], p["total"]) == (3, 3) and p["stale"] >= 1  # the draft was never checked
     assert _health(packs_include_draft="true", app_env="prod")["packs"]["usable"] == 2
 
 

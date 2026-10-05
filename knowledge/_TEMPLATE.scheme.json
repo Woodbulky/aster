@@ -5,6 +5,9 @@
   "verified_by": null,
   "verified_on": null,
   "academic_year": "<e.g. 2026-27>",
+  "route": "both",
+  "apply_url": "https://<this cycle's application portal>",
+  "deadlines_checked_on": null,
   "name": { "en": "", "mr": "", "hi": "" },
   "department": "",
   "official_urls": ["https://mahadbt.maharashtra.gov.in/..."],
@@ -16,13 +19,30 @@
       "logic": { "==": [{ "var": "profile.domicile_state" }, "Maharashtra"] },
       "ask_if_unknown": { "field_key": "domicile_state" },
       "source": { "url": "", "quote": "" }
+    },
+    {
+      "id": "EXAMPLE_condition_only_for_one_course_type",
+      "text": { "en": "EXAMPLE — a rule that applies only to professional courses", "mr": "", "hi": "" },
+      "logic": { "<=": [{ "var": "profile.annual_family_income" }, 800000] },
+      "applies_if": { "==": [{ "var": "answers.professional_course" }, "yes"] },
+      "applies_note": { "en": "Only for professional courses", "mr": "", "hi": "" },
+      "source": { "url": "", "quote": "" }
     }
+  ],
+  "questions": [
+    { "id": "professional_course", "text": { "en": "Is your course a professional course (as the scheme defines it)?", "mr": "", "hi": "" }, "options": ["yes", "no"], "source": { "url": "", "quote": "" } },
+    { "id": "had_gap", "text": { "en": "Did you have a gap in your education?", "mr": "", "hi": "" }, "options": ["yes", "no"], "source": { "url": "", "quote": "" } }
   ],
   "documents": [
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
+      "also_accepts": [],
       "required": true,
       "required_if": null,
+      "stage": "apply",
+      "period": { "en": "previous financial year", "mr": "", "hi": "" },
+      "holder": "either",
       "text": { "en": "EXAMPLE — replace from source", "mr": "", "hi": "" },
       "validity_note": { "en": "", "mr": "", "hi": "" },
       "source": { "url": "", "quote": "" }

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     ocr_timeout_s: float = 30.0
     # dev only: also offer draft knowledge packs (badged DRAFT). Ignored when APP_ENV=prod.
     packs_include_draft: bool = False
+    # The academic cycle ("2026-27"); empty = from today's date (Indian AY starts in June).
+    academic_year: str = Field(default="", pattern=r"^(\d{4}-\d{2})?$")
+    # A verified pack's rules and its deadlines/portal are rechecked on these clocks.
+    pack_rules_max_age_days: int = 180
+    pack_deadlines_max_age_days: int = 14
 
     @field_validator("allowed_origins", mode="before")
     @classmethod

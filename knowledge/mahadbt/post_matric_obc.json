@@ -97,18 +97,38 @@
         "hi": ""
       },
       "logic": {
-        "!!": [
+        "and": [
           {
-            "var": "profile.ssc_year"
+            "or": [
+              {
+                "!!": [
+                  {
+                    "var": "profile.ssc_year"
+                  }
+                ]
+              },
+              {
+                "!!": [
+                  {
+                    "var": "profile.entry_qualification"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "==": [
+              {
+                "var": "answers.course_approved"
+              },
+              "yes"
+            ]
           }
         ]
       },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "Applicants must be pursuing the education course approved by the government from class Post-Matric."
-      },
-      "ask_if_unknown": {
-        "field_key": "ssc_year"
       }
     },
     {
@@ -131,7 +151,76 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.other_scholarship"
+          },
+          "no"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "No scholarship will be paid to the Applicants under this scheme from the date he /she accepts another Scholarship / stipend."
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "professional_course",
+      "text": {
+        "en": "Is your course a professional course (as the scheme defines it)?",
+        "mr": "तुमचा अभ्यासक्रम (योजनेनुसार) व्यावसायिक अभ्यासक्रम आहे का?",
+        "hi": "क्या आपका कोर्स (योजना के अनुसार) व्यावसायिक कोर्स है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Caste Validity Certificate – (Mandatory for Professional Degree courses, Professional Post Graduate."
+      }
+    },
+    {
+      "id": "had_gap",
+      "text": {
+        "en": "Did you have a gap (a year without study) in your education?",
+        "mr": "तुमच्या शिक्षणात खंड (शिक्षण न घेतलेले वर्ष) पडला होता का?",
+        "hi": "क्या आपकी पढ़ाई में कोई अंतराल (बिना पढ़ाई का साल) रहा है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Gap certificate - Not mandatory but in case of gap it is mandatory."
+      }
+    },
+    {
+      "id": "father_deceased",
+      "text": {
+        "en": "Has your father (or guardian) passed away? Answer only if you are comfortable; it decides one document.",
+        "mr": "तुमचे वडील (किंवा पालक) हयात नाहीत का? सांगणे ऐच्छिक आहे; त्यावर एक कागदपत्र ठरते.",
+        "hi": "क्या आपके पिता (या अभिभावक) का निधन हो चुका है? बताना आपकी इच्छा है; इससे एक दस्तावेज़ तय होता है।"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "If applicable father/Guardians death certificate."
+      }
+    },
+    {
+      "id": "course_approved",
+      "text": {
+        "en": "Is your course approved by the government?",
+        "mr": "तुमचा अभ्यासक्रम शासनमान्य आहे का?",
+        "hi": "क्या आपका कोर्स सरकार से मान्यता प्राप्त है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
+        "quote": "Applicants must be pursuing the education course approved by the government from class Post-Matric."
+      }
+    },
+    {
+      "id": "other_scholarship",
+      "text": {
+        "en": "Are you getting any other scholarship, stipend, fee waiver or reimbursement this year?",
+        "mr": "तुम्हाला या वर्षी दुसरी शिष्यवृत्ती, विद्यावेतन, शुल्कमाफी किंवा शुल्क परतावा मिळतो का?",
+        "hi": "क्या आपको इस साल कोई दूसरी छात्रवृत्ति, वजीफ़ा, फ़ीस माफ़ी या फ़ीस प्रतिपूर्ति मिलती है?"
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "No scholarship will be paid to the Applicants under this scheme from the date he /she accepts another Scholarship / stipend."
@@ -140,6 +229,7 @@
   ],
   "documents": [
     {
+      "id": "caste_certificate",
       "doc_type": "caste_certificate",
       "required": true,
       "required_if": null,
@@ -154,6 +244,7 @@
       }
     },
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -165,12 +256,21 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "Income certificate / Income Declaration - should be issued by competent authority"
-      }
+      },
+      "holder": "either"
     },
     {
+      "id": "caste_validity",
       "doc_type": "caste_validity",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.professional_course"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Caste validity certificate (mandatory for professional degree / PG courses)",
         "mr": "",
@@ -182,6 +282,7 @@
       }
     },
     {
+      "id": "marksheet",
       "doc_type": "hsc_marksheet",
       "required": true,
       "required_if": null,
@@ -193,12 +294,23 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "HSC or SSC marksheet or last examination marksheet."
-      }
+      },
+      "also_accepts": [
+        "ssc_marksheet"
+      ]
     },
     {
+      "id": "gap_certificate",
       "doc_type": "gap_certificate",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.had_gap"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Gap certificate (if you had a gap)",
         "mr": "",
@@ -210,9 +322,17 @@
       }
     },
     {
+      "id": "father_death_certificate",
       "doc_type": "other",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.father_deceased"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Father's / guardian's death certificate (if applicable)",
         "mr": "",
@@ -224,6 +344,7 @@
       }
     },
     {
+      "id": "ration_card",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -235,9 +356,11 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "Ration Card for identify number of children in family."
-      }
+      },
+      "holder": "parent"
     },
     {
+      "id": "leaving_certificate",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -252,6 +375,7 @@
       }
     },
     {
+      "id": "children_declaration",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -263,7 +387,8 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AB02E984835E89FEFDB316E301CE6A991F41C5D42B01A7D7E",
         "quote": "Declaration certificate of parents/guardians about number of children beneficiaries."
-      }
+      },
+      "holder": "parent"
     }
   ],
   "computed_facts": {},

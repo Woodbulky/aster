@@ -206,13 +206,19 @@ function ChatSession({ sessionId }: { sessionId: string }) {
                           onPick={(o) => sendUi("form_selected", { portal: o.portal, scheme_key: o.scheme_key })}
                         />
                       ) : card.kind === "eligibility" ? (
-                        <EligibilityCard payload={card.payload} onContinue={phase === "eligibility" ? () => sendUi("documents_requested") : undefined} />
+                        <EligibilityCard
+                          payload={card.payload}
+                          sessionId={sessionId}
+                          lang={lang}
+                          onContinue={phase === "eligibility" ? () => sendUi("documents_requested") : undefined}
+                          onAnswered={() => sendUi("eligibility_answered")}
+                        />
                       ) : card.kind === "document_checklist" ? (
-                        <DocumentChecklistCard payload={card.payload} />
+                        <DocumentChecklistCard payload={card.payload} lang={lang} onAnswered={() => sendUi("requirement_answered")} />
                       ) : card.kind === "field_review" ? (
                         <FieldReviewCard payload={card.payload} />
                       ) : card.kind === "contradiction" || card.kind === "missing_item" || card.kind === "low_confidence" ? (
-                        <FlagCard payload={card.payload} onAnswered={(id) => sendUi("flag_resolved", { flag_id: id })} />
+                        <FlagCard payload={card.payload} lang={lang} onAnswered={(id) => sendUi("flag_resolved", { flag_id: id })} />
                       ) : card.kind === "readiness" ? (
                         <ReadinessCard payload={card.payload} />
                       ) : card.kind === "start_screen_share" ? (

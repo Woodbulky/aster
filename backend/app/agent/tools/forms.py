@@ -1,17 +1,17 @@
 """Choosing a scholarship: any scheme. Schemes with a knowledge pack are ranked against the
 profile; anything else is researched live (RESEARCH.md)."""
 
+import re
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from rapidfuzz import fuzz
-from rapidfuzz.utils import default_process
 
 from app.agent.tools import Card, Ctx, NoArgs, ToolResult, register
 from app.agent.tools.eligibility import counts, evaluate_pack
 from app.agent.tools.research import cached_research, reuse_research
 from app.db import supabase as repo
-from app.research.packs import portals, usable_packs
+from app.research.packs import current_cycle, portals, usable_packs
 
 MAX_OPTIONS = 6
 PACK_NAME_MATCH = 90
@@ -120,14 +120,33 @@ class SetFormArgs(BaseModel):
         return self
 
 
+# Words any scheme name may have: they say nothing about which scheme is meant. Seen: with one
+# usable pack, "LIC scholarship" picked it on the word "scholarship" alone.
+_NOISE = {
+    *("scholarship", "scholarships", "scheme", "yojana", "program", "programme"),
+    *("the", "for", "of", "and"),
+    *("शिष्यवृत्ती", "शिष्यवृत्ति", "छात्रवृत्ति", "छात्रवृत्ती", "स्कॉलरशिप", "योजना"),
+}
+
+
+def _words(text: str) -> str:
+    """Whole words minus generic ones and numbers. Devanagari stays whole: default_process splits
+    it at every vowel sign, so any two Hindi/Marathi names shared a one-letter "word"."""
+    words = re.findall(r"[\wऀ-ॿ]+", text.casefold())
+    return " ".join(w for w in words if w not in _NOISE and not w.isdigit())
+
+
 def pack_for_name(name: str) -> str | None:
     """The pack a typed scheme name clearly means ("Shahu Maharaj EBC" -> the EBC pack), or None
     when no pack or more than one fits (e.g. "post matric scholarship": SC, ST and OBC packs).
     Seen live: the typed name went to web research and saved a rule from another scheme's page."""
 
+    if not (said := _words(name)):
+        return None
+
     def fit(p: Any) -> float:
-        names = [n for n in (p.name.en, p.name.mr, p.name.hi) if n]
-        return max(fuzz.partial_token_set_ratio(name, n, processor=default_process) for n in names)
+        names = [w for n in (p.name.en, p.name.mr, p.name.hi) if n and (w := _words(n))]
+        return max((fuzz.partial_token_set_ratio(said, n) for n in names), default=0)
 
     scores = sorted(((fit(p), k) for k, p in usable_packs().items()), reverse=True)
     if not scores or scores[0][0] < PACK_NAME_MATCH:
@@ -148,16 +167,21 @@ def scheme_values(args: SetFormArgs) -> dict[str, Any] | None:
             "scheme_key": None,
             "scheme_name": args.scheme_name,
             "portal_url": None,
+            "academic_year": current_cycle(),
         }
     pack = usable_packs().get(args.scheme_key)
     if not pack:
         return None
+    cycle = pack.academic_year or current_cycle()  # a draft without one: this year's
     # The portal URL comes from the reviewed knowledge files, never from the LLM (guardrail 8).
     return {
         "portal": pack.portal,
         "scheme_key": pack.scheme_key,
         "scheme_name": pack.name.en,
-        "portal_url": portals()[pack.portal].url if pack.portal in portals() else None,
+        # This cycle's application portal (MahaDBT 2026-27 moved to MahaDBT 2.0).
+        "portal_url": pack.apply_url
+        or (portals()[pack.portal].url_for(cycle) if pack.portal in portals() else None),
+        "academic_year": cycle,
     }
 
 

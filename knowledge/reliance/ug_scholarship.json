@@ -1,0 +1,362 @@
+{
+  "scheme_key": "reliance.ug_scholarship",
+  "portal": "reliance",
+  "status": "verified",
+  "verified_by": "Woodbulky",
+  "verified_on": "2026-10-05",
+  "academic_year": "2026-27",
+  "route": "fresh",
+  "apply_url": "https://scholarships.reliancefoundation.org/UG_Scholarship",
+  "deadlines_checked_on": "2026-10-05",
+  "name": {
+    "en": "Reliance Foundation Undergraduate Scholarship 2026-27",
+    "mr": "रिलायन्स फाउंडेशन पदवीपूर्व (अंडरग्रॅज्युएट) शिष्यवृत्ती २०२६-२७",
+    "hi": "रिलायंस फाउंडेशन अंडरग्रेजुएट स्कॉलरशिप 2026-27"
+  },
+  "department": "Reliance Foundation",
+  "official_urls": [
+    "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+    "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+    "https://www.reliancefoundation.org/media/media-release/Reliance_Foundation_Scholarships_2026-27"
+  ],
+  "summary": {
+    "en": "Up to ₹2 lakh over the degree for 5,000 first-year, regular full-time undergraduate students of any stream, with 60%+ in 12th and household income up to ₹15 lakh. Merit-cum-means: an online application plus a mandatory online aptitude test. No fee at any stage.",
+    "mr": "कोणत्याही शाखेतील पदवीच्या पहिल्या वर्षाच्या, नियमित पूर्णवेळ ५,००० विद्यार्थ्यांना पदवीच्या काळात ₹२ लाखांपर्यंत शिष्यवृत्ती. अटी: १२वीत किमान ६०% आणि कुटुंबाचे उत्पन्न ₹१५ लाखांपर्यंत. ऑनलाइन अर्ज + अनिवार्य ऑनलाइन ॲप्टिट्यूड टेस्ट. कोणतेही शुल्क नाही.",
+    "hi": "किसी भी स्ट्रीम के ग्रेजुएशन के पहले साल के, रेगुलर फुल-टाइम 5,000 छात्रों को डिग्री के दौरान ₹2 लाख तक की स्कॉलरशिप। शर्तें: 12वीं में कम से कम 60% और परिवार की आय ₹15 लाख तक। ऑनलाइन आवेदन + अनिवार्य ऑनलाइन एप्टीट्यूड टेस्ट। कोई फीस नहीं।"
+  },
+  "criteria": [
+    {
+      "id": "indian_resident",
+      "text": {
+        "en": "Indian citizen living in India",
+        "mr": "भारतात राहणारे भारतीय नागरिक",
+        "hi": "भारत में रहने वाले भारतीय नागरिक"
+      },
+      "logic": { "==": [{ "var": "answers.indian_resident" }, "yes"] },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Be an Indian citizen residing in India."
+      }
+    },
+    {
+      "id": "hsc_60",
+      "text": {
+        "en": "Passed 12th (Higher Secondary) with at least 60% marks",
+        "mr": "१२वी (उच्च माध्यमिक) किमान ६०% गुणांनी उत्तीर्ण",
+        "hi": "12वीं (हायर सेकेंडरी) कम से कम 60% अंकों के साथ पास"
+      },
+      "logic": { ">=": [{ "var": "profile.hsc_percentage" }, 60] },
+      "ask_if_unknown": { "field_key": "hsc_percentage" },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "You are eligible only if you have completed Higher Secondary (Class 12) with a minimum of 60% marks."
+      }
+    },
+    {
+      "id": "first_year_2026",
+      "text": {
+        "en": "In the first year of an undergraduate degree, admitted in 2026-27",
+        "mr": "पदवीच्या पहिल्या वर्षात, प्रवेश २०२६-२७ मध्ये",
+        "hi": "ग्रेजुएशन के पहले साल में, प्रवेश 2026-27 में"
+      },
+      "logic": {
+        "and": [
+          { "==": [{ "var": "profile.admission_year" }, { "var": "computed.cycle_start" }] },
+          { "==": [{ "var": "profile.current_year" }, 1] }
+        ]
+      },
+      "ask_if_unknown": { "field_key": "admission_year" },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "You must be enrolled in the first year of a regular, full-time undergraduate degree programme before applying."
+      }
+    },
+    {
+      "id": "regular_full_time",
+      "text": {
+        "en": "Regular, full-time course (not online, distance or remote)",
+        "mr": "नियमित पूर्णवेळ अभ्यासक्रम (ऑनलाइन, दूरस्थ किंवा रिमोट नाही)",
+        "hi": "रेगुलर फुल-टाइम कोर्स (ऑनलाइन, डिस्टेंस या रिमोट नहीं)"
+      },
+      "logic": { "==": [{ "var": "profile.course_mode" }, "regular"] },
+      "ask_if_unknown": { "field_key": "course_mode" },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Are pursuing your degree through online, distance, remote, or any other non-regular mode."
+      }
+    },
+    {
+      "id": "degree_3_plus_years",
+      "text": {
+        "en": "An undergraduate degree of three or more years (two-year and six-year degrees are not eligible)",
+        "mr": "तीन किंवा अधिक वर्षांची पदवी (दोन वर्षांची व सहा वर्षांची पदवी पात्र नाही)",
+        "hi": "तीन या ज़्यादा साल की डिग्री (दो साल और छह साल की डिग्री पात्र नहीं)"
+      },
+      "logic": { "==": [{ "var": "answers.degree_3_plus_years" }, "yes"] },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Students enrolled in any regular, full-time undergraduate degree programme of three or more years are eligible to apply."
+      }
+    },
+    {
+      "id": "institute_naac_ugc",
+      "text": {
+        "en": "College in India that is NAAC-accredited or UGC-recognised",
+        "mr": "भारतातील NAAC मानांकित किंवा UGC मान्यताप्राप्त महाविद्यालय",
+        "hi": "भारत में NAAC मान्यता प्राप्त या UGC मान्य कॉलेज"
+      },
+      "logic": { "==": [{ "var": "answers.institute_naac_ugc" }, "yes"] },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "You can apply if you are enrolled in a NAAC-accredited or UGC-recognised institution in India."
+      }
+    },
+    {
+      "id": "income_15_lakh",
+      "text": {
+        "en": "Household income (parents' income only) ₹15 lakh a year or less",
+        "mr": "कुटुंबाचे उत्पन्न (फक्त आई-वडिलांचे) वार्षिक ₹१५ लाख किंवा कमी",
+        "hi": "परिवार की आय (सिर्फ़ माता-पिता की) सालाना ₹15 लाख या कम"
+      },
+      "logic": { "<=": [{ "var": "profile.annual_family_income" }, 1500000] },
+      "ask_if_unknown": { "field_key": "annual_family_income" },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Yes. You are eligible to apply only if your total household income is"
+      }
+    },
+    {
+      "id": "aptitude_test",
+      "text": {
+        "en": "Take the mandatory online aptitude test once, in your assigned slot (by 18 October 2026)",
+        "mr": "अनिवार्य ऑनलाइन ॲप्टिट्यूड टेस्ट एकदाच, दिलेल्या वेळेत द्या (१८ ऑक्टोबर २०२६ पर्यंत)",
+        "hi": "अनिवार्य ऑनलाइन एप्टीट्यूड टेस्ट एक बार, दिए गए स्लॉट में दें (18 अक्टूबर 2026 तक)"
+      },
+      "logic": null,
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "All applicants are required to complete an online aptitude test."
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "indian_resident",
+      "text": {
+        "en": "Are you an Indian citizen living in India?",
+        "mr": "तुम्ही भारतात राहणारे भारतीय नागरिक आहात का?",
+        "hi": "क्या आप भारत में रहने वाले भारतीय नागरिक हैं?"
+      },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Be an Indian citizen residing in India."
+      }
+    },
+    {
+      "id": "degree_3_plus_years",
+      "text": {
+        "en": "Is your course an undergraduate degree of three or more years (not a two-year or six-year degree)?",
+        "mr": "तुमचा अभ्यासक्रम तीन किंवा अधिक वर्षांची पदवी आहे का (दोन किंवा सहा वर्षांची नाही)?",
+        "hi": "क्या आपका कोर्स तीन या ज़्यादा साल की डिग्री है (दो या छह साल की नहीं)?"
+      },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "Are enrolled in a two-year or six-year undergraduate degree programme."
+      }
+    },
+    {
+      "id": "institute_naac_ugc",
+      "text": {
+        "en": "Is your college NAAC-accredited or UGC-recognised?",
+        "mr": "तुमचे महाविद्यालय NAAC मानांकित किंवा UGC मान्यताप्राप्त आहे का?",
+        "hi": "क्या आपका कॉलेज NAAC मान्यता प्राप्त या UGC मान्य है?"
+      },
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "You can apply if you are enrolled in a NAAC-accredited or UGC-recognised institution in India."
+      }
+    },
+    {
+      "id": "has_disability",
+      "text": {
+        "en": "Do you have a disability certificate to declare?",
+        "mr": "तुमच्याकडे जाहीर करण्यासाठी अपंगत्व प्रमाणपत्र आहे का?",
+        "hi": "क्या आपके पास बताने के लिए दिव्यांगता प्रमाणपत्र है?"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Disability certificate (if applicable)"
+      }
+    }
+  ],
+  "documents": [
+    {
+      "id": "aadhaar",
+      "doc_type": "aadhaar",
+      "required": true,
+      "text": {
+        "en": "Aadhaar card (enter your name exactly as on it)",
+        "mr": "आधार कार्ड (नाव त्यावर आहे तसेच लिहा)",
+        "hi": "आधार कार्ड (नाम बिल्कुल उसी तरह लिखें जैसा उस पर है)"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Enter your name exactly as it appears on your Aadhaar Card."
+      }
+    },
+    {
+      "id": "ssc_marksheet",
+      "doc_type": "ssc_marksheet",
+      "required": true,
+      "text": {
+        "en": "Class 10 marksheet",
+        "mr": "१०वीची गुणपत्रिका",
+        "hi": "10वीं की मार्कशीट"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Class 10 Marksheet"
+      }
+    },
+    {
+      "id": "hsc_marksheet",
+      "doc_type": "hsc_marksheet",
+      "required": true,
+      "text": {
+        "en": "Class 12 marksheet",
+        "mr": "१२वीची गुणपत्रिका",
+        "hi": "12वीं की मार्कशीट"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Class 12 Marksheet"
+      }
+    },
+    {
+      "id": "bonafide_certificate",
+      "doc_type": "other",
+      "required": true,
+      "text": {
+        "en": "Bonafide certificate from your current college",
+        "mr": "सध्याच्या महाविद्यालयाचे बोनाफाईड प्रमाणपत्र",
+        "hi": "मौजूदा कॉलेज का बोनाफाइड सर्टिफिकेट"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Bonafide Certificate from your college"
+      }
+    },
+    {
+      "id": "income_proof",
+      "doc_type": "income_certificate",
+      "required": true,
+      "holder": "parent",
+      "text": {
+        "en": "Household income proof (both parents' income)",
+        "mr": "कुटुंबाच्या उत्पन्नाचा पुरावा (आई-वडील दोघांचे उत्पन्न)",
+        "hi": "परिवार की आय का प्रमाण (माता-पिता दोनों की आय)"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Household income should include the family income of both the parents (if relevant)."
+      }
+    },
+    {
+      "id": "photo",
+      "doc_type": "other",
+      "required": true,
+      "text": {
+        "en": "Passport-size photograph",
+        "mr": "पासपोर्ट आकाराचा फोटो",
+        "hi": "पासपोर्ट साइज़ फोटो"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Passport-size photograph"
+      }
+    },
+    {
+      "id": "disability_certificate",
+      "doc_type": "other",
+      "required": true,
+      "required_if": { "==": [{ "var": "answers.has_disability" }, "yes"] },
+      "text": {
+        "en": "Disability certificate (only if applicable)",
+        "mr": "अपंगत्व प्रमाणपत्र (लागू असल्यासच)",
+        "hi": "दिव्यांगता प्रमाणपत्र (सिर्फ़ लागू होने पर)"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Disability certificate (if applicable)"
+      }
+    },
+    {
+      "id": "bank_pan_details",
+      "doc_type": "other",
+      "required": true,
+      "stage": "later",
+      "text": {
+        "en": "Bank account and PAN details (entered after you submit the application)",
+        "mr": "बँक खाते व PAN तपशील (अर्ज सबमिट केल्यानंतर भरायचे)",
+        "hi": "बैंक खाता और PAN विवरण (आवेदन सबमिट करने के बाद भरना है)"
+      },
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "Submit your Bank Account and PAN details."
+      }
+    }
+  ],
+  "computed_facts": {},
+  "portal_field_map": [],
+  "deadlines": [
+    {
+      "label": {
+        "en": "Last date to submit the online application (11:59 PM IST)",
+        "mr": "ऑनलाइन अर्ज सबमिट करण्याची शेवटची तारीख (रात्री ११:५९ IST)",
+        "hi": "ऑनलाइन आवेदन जमा करने की आखिरी तारीख (रात 11:59 IST)"
+      },
+      "date": "2026-10-05",
+      "source": {
+        "url": "https://www.scholarships.reliancefoundation.org/assets/pdf/UG_FAQ.pdf",
+        "quote": "The deadline to submit your application is 11:59 PM IST on Monday, 5 October 2026."
+      }
+    },
+    {
+      "label": {
+        "en": "Aptitude test closes",
+        "mr": "ॲप्टिट्यूड टेस्टची शेवटची तारीख",
+        "hi": "एप्टीट्यूड टेस्ट की आखिरी तारीख"
+      },
+      "date": "2026-10-18",
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "APTITUDE TEST CLOSES 3 18th OCTOBER 2026"
+      }
+    },
+    {
+      "label": {
+        "en": "Final results announced",
+        "mr": "अंतिम निकाल जाहीर",
+        "hi": "अंतिम परिणाम घोषित"
+      },
+      "date": "2026-12-28",
+      "source": {
+        "url": "https://scholarshipportal.reliancefoundation.org/Guidance%20to%20Applicants%20UG.pdf",
+        "quote": "FINAL RESULTS ANNOUNCED 4 28th DECEMBER 2026"
+      }
+    }
+  ],
+  "notes": [
+    "Amount: up to Rs. 2 lakh during the undergraduate course; 5,000 scholarships a year (100 more are postgraduate, a separate scheme). Merit-cum-means selection. No fee at any stage of the application (media release, guidance document).",
+    "Income: household income = parents' income only; at most Rs. 15 lakh a year, and preference goes to household income below Rs. 2.5 lakh (FAQ).",
+    "Not eligible (FAQ): second year or above (started in 2025-26 or earlier); online, distance, remote or other non-regular mode; a two-year or six-year degree; skipping the aptitude test, cheating in it, or attempting it more than once; a degree outside India.",
+    "Also from the FAQ: no age limit; 12th passed abroad is fine; a diploma after 10th without 12th is not enough (12th with 60% is needed); CA/CS students qualify only if also in the first year of a regular full-time degree (e.g. B.Com., BBA, B.Sc.) and enter that degree in the form; any NAAC-accredited or UGC-recognised institution in India.",
+    "How to apply: register on scholarships.reliancefoundation.org, open the link in the activation email, log in to the application portal with the registered mobile number and the OTP sent to it (the student types the OTP themselves), fill the form (about 30 minutes, can be saved and finished later), upload the documents (DigiLocker recommended), submit, then add bank account and PAN details and take the aptitude test in the assigned slot.",
+    "Form tips (guidance document): name exactly as on Aadhaar; marks exactly as on the marksheets; course name as in admission records; use a personal email (Gmail, Yahoo, Outlook), not an institute email; only one application per student; it cannot be edited after final submission (one correction request by email is allowed); no deadline extensions.",
+    "Application is complete only after BOTH the submitted form and the aptitude test. Confirmation: an email plus an application number on screen; the application can be downloaded as a ZIP.",
+    "Aptitude test: online multiple-choice, Class-12 level, three parts: Verbal Ability, Analytical & Logical Ability, Numerical Ability. A practice test is available first. Camera and microphone on, full-screen, one sitting, alone, stable internet, quiet well-lit room; no other tabs.",
+    "Selection: aptitude test performance + the academic and personal information in the application, then document verification of shortlisted applicants, then final selection. Results by 28 December 2026.",
+    "Timeline 2026-27: applications opened 15 August 2026; close 5 October 2026 (11:59 PM IST); aptitude test closes 18 October 2026; results 28 December 2026.",
+    "Help: WhatsApp \"Hi\" to 7977 100 100; helpline (011) 4117 1414; email RF.UGScholarships@reliancefoundation.org."
+  ]
+}

@@ -58,6 +58,19 @@
           800000
         ]
       },
+      "applies_if": {
+        "==": [
+          {
+            "var": "answers.professional_course"
+          },
+          "yes"
+        ]
+      },
+      "applies_note": {
+        "en": "Only for professional courses",
+        "mr": "फक्त व्यावसायिक अभ्यासक्रमांसाठी",
+        "hi": "सिर्फ़ व्यावसायिक कोर्स के लिए"
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "total annual income of family/ Guardian should not be more than 8.lakh"
@@ -73,10 +86,33 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "<=": [
+          {
+            "var": "profile.annual_family_income"
+          },
+          100000
+        ]
+      },
+      "applies_if": {
+        "==": [
+          {
+            "var": "answers.professional_course"
+          },
+          "no"
+        ]
+      },
+      "applies_note": {
+        "en": "Only for non-professional courses",
+        "mr": "फक्त बिगर-व्यावसायिक अभ्यासक्रमांसाठी",
+        "hi": "सिर्फ़ गैर-व्यावसायिक कोर्स के लिए"
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "For Non Professional Courses, applicant should have upto 1 lakh family Annual Income."
+      },
+      "ask_if_unknown": {
+        "field_key": "annual_family_income"
       }
     },
     {
@@ -87,23 +123,35 @@
         "hi": ""
       },
       "logic": {
-        "in": [
+        "or": [
           {
-            "var": "profile.category"
+            "in": [
+              {
+                "var": "profile.category"
+              },
+              [
+                "Open",
+                "EWS",
+                "SEBC"
+              ]
+            ]
           },
-          [
-            "Open",
-            "EWS",
-            "SEBC"
-          ]
+          {
+            "in": [
+              {
+                "var": "answers.admission_category"
+              },
+              [
+                "open",
+                "SEBC"
+              ]
+            ]
+          }
         ]
       },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
-      },
-      "ask_if_unknown": {
-        "field_key": "category"
       }
     },
     {
@@ -113,7 +161,14 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.hosteller"
+          },
+          "yes"
+        ]
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Applicant should be hosteller.(Govt/Private hostel/ Paying Guest/ Tenant.)"
@@ -126,7 +181,81 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.first_two_children"
+          },
+          "yes"
+        ]
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "As per Government Resolution first two children eligible for scheme."
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "had_gap",
+      "text": {
+        "en": "Did you have a gap (a year without study) in your education?",
+        "mr": "तुमच्या शिक्षणात खंड (शिक्षण न घेतलेले वर्ष) पडला होता का?",
+        "hi": "क्या आपकी पढ़ाई में कोई अंतराल (बिना पढ़ाई का साल) रहा है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Gap Related Document(if Gap is there)"
+      }
+    },
+    {
+      "id": "professional_course",
+      "text": {
+        "en": "Is your course a professional course (as the scheme defines it)?",
+        "mr": "तुमचा अभ्यासक्रम (योजनेनुसार) व्यावसायिक अभ्यासक्रम आहे का?",
+        "hi": "क्या आपका कोर्स (योजना के अनुसार) व्यावसायिक कोर्स है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "For Non Professional Courses, applicant should have upto 1 lakh family Annual Income."
+      }
+    },
+    {
+      "id": "admission_category",
+      "text": {
+        "en": "Under which category did you take admission to your course?",
+        "mr": "तुम्ही अभ्यासक्रमाला कोणत्या प्रवर्गातून प्रवेश घेतला?",
+        "hi": "आपने कोर्स में किस श्रेणी से दाख़िला लिया?"
+      },
+      "options": [
+        "open",
+        "SEBC",
+        "other reserved"
+      ],
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
+      }
+    },
+    {
+      "id": "hosteller",
+      "text": {
+        "en": "Do you live in a hostel, paying-guest room or rented room?",
+        "mr": "तुम्ही वसतिगृह, पेइंग गेस्ट खोली किंवा भाड्याच्या खोलीत राहता का?",
+        "hi": "क्या आप हॉस्टल, पेइंग गेस्ट या किराये के कमरे में रहते हैं?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
+        "quote": "Applicant should be hosteller.(Govt/Private hostel/ Paying Guest/ Tenant.)"
+      }
+    },
+    {
+      "id": "first_two_children",
+      "text": {
+        "en": "Are you one of the first two children of your parents?",
+        "mr": "तुम्ही तुमच्या पालकांच्या पहिल्या दोन अपत्यांपैकी एक आहात का?",
+        "hi": "क्या आप अपने माता-पिता की पहली दो संतानों में से हैं?"
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "As per Government Resolution first two children eligible for scheme."
@@ -135,6 +264,7 @@
   ],
   "documents": [
     {
+      "id": "domicile_certificate",
       "doc_type": "domicile_certificate",
       "required": true,
       "required_if": null,
@@ -149,6 +279,7 @@
       }
     },
     {
+      "id": "labour_or_income_certificate",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -160,9 +291,14 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Registered labor certificate / Alpabudharak Certificate/ Family Annual Income Certificate."
-      }
+      },
+      "also_accepts": [
+        "income_certificate"
+      ],
+      "holder": "parent"
     },
     {
+      "id": "hostel_proof",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -177,6 +313,7 @@
       }
     },
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -188,9 +325,16 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Students should submit previous year Annual income certificate issued by Authorized official."
+      },
+      "holder": "either",
+      "period": {
+        "en": "previous academic year",
+        "mr": "मागील शैक्षणिक वर्ष",
+        "hi": "पिछला शैक्षणिक वर्ष"
       }
     },
     {
+      "id": "two_children_declaration",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -202,9 +346,11 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Family Declaration Certificate about two children’s."
-      }
+      },
+      "holder": "parent"
     },
     {
+      "id": "attendance_certificate",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -219,6 +365,7 @@
       }
     },
     {
+      "id": "previous_year_marksheet",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -230,12 +377,25 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51A1FA3AA7E67D54CF402FD88D88C64949C41EC3238C8545A71",
         "quote": "Previous year Mark sheet."
+      },
+      "period": {
+        "en": "previous academic year",
+        "mr": "मागील शैक्षणिक वर्ष",
+        "hi": "पिछला शैक्षणिक वर्ष"
       }
     },
     {
+      "id": "gap_certificate",
       "doc_type": "gap_certificate",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.had_gap"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Gap document (if you had a gap)",
         "mr": "",

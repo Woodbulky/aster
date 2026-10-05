@@ -316,7 +316,7 @@ def test_saved_research_is_reused_by_the_next_student(
     store.add_fetched(None, "u1", "s1", page)
     assert run_tool(ctx(store), "save_research", {"items": [_item()]}).ok
     [row] = store.cache
-    assert row["scheme_norm"] == "tata pankh"
+    assert row["scheme_norm"] == f"{research_tools.current_cycle()}|tata pankh"
     assert "content_id" not in row["items"]["eligibility"][0]  # that row was the first student's
     # a new session names the same scheme: no research rounds at all
     store.profile.update(COMPLETE_PROFILE)
@@ -336,7 +336,7 @@ def test_saved_research_is_reused_by_the_next_student(
 def test_expired_or_unlike_names_are_not_reused(store: FakeStore) -> None:
     store.cache.append(
         {
-            "scheme_norm": "tata pankh",
+            "scheme_norm": f"{research_tools.current_cycle()}|tata pankh",
             "scheme_name": "Tata Pankh",
             "items": {},
             "saved_at": "2026-01-01",
@@ -347,6 +347,9 @@ def test_expired_or_unlike_names_are_not_reused(store: FakeStore) -> None:
     store.cache[0]["expires_at"] = "2999-01-01T00:00:00+00:00"
     assert research_tools.cached_research(ctx(store), "tata  PANKH")
     assert research_tools.cached_research(ctx(store), "HDFC Badhte Kadam") is None
+    # Last year's research does not answer this year's student.
+    store.sessions["s1"]["academic_year"] = "2019-20"
+    assert research_tools.cached_research(ctx(store), "Tata Pankh") is None
 
 
 # ---------- faster turns ----------

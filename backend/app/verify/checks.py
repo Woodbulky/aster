@@ -10,9 +10,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, field_validator
 from supabase import Client
 
+from app.agent.phases import NO_HSC_PATHS, scheme_of
 from app.db import supabase as repo
 from app.research.packs import usable_packs
-from app.verify import names
+from app.verify import names, requirements
 from app.verify.contradictions import best, canon, disagreements, effective, name_match_min, same
 from app.verify.extraction import DOC_LABELS, field_label
 from app.verify.rules_engine import evaluate, variables
@@ -59,6 +60,14 @@ MESSAGES = {
         "en": "This required document is not uploaded yet.",
         "hi": "यह ज़रूरी दस्तावेज़ अभी अपलोड नहीं हुआ है।",
         "mr": "हे आवश्यक कागदपत्र अजून अपलोड झालेले नाही.",
+    },
+    "requirement_question": {
+        "en": "Whether you need this document depends on your answer. Answer the question, or say "
+        "why it doesn't apply to you.",
+        "hi": "यह दस्तावेज़ चाहिए या नहीं, यह आपके जवाब पर निर्भर है। सवाल का जवाब दें, या बताएँ कि यह "
+        "आप पर क्यों लागू नहीं होता।",
+        "mr": "हे कागदपत्र लागेल की नाही हे तुमच्या उत्तरावर ठरते. प्रश्नाचे उत्तर द्या, किंवा ते "
+        "तुम्हाला का लागू नाही ते सांगा.",
     },
     "low_confidence": {
         "en": "This value was hard to read. Check it against your document.",
@@ -224,6 +233,159 @@ def _lookup(path: str, data: Row) -> Any:
     return cur
 
 
+# ---------- scheme requirements (requirements.py): one status for checklist, checks, readiness
+# Not in the packs' document lists, but most portals ask for them and Aster checks names and bank
+# details against them.
+RECOMMENDED = ("aadhaar", "ssc_marksheet", "bank_passbook")
+RECOMMENDED_NOTE = "Recommended: Aster checks your details against it"
+
+
+def session_reqs(
+    db: Client, user_id: str, session: Row, lang: str = "en", profile: Row | None = None
+) -> list[requirements.Req]:
+    """The chosen scheme's document requirements (pack, else live research) + recommended ones.
+    A path with no Class 12 (diploma, ITI) is not recommended a 12th marksheet."""
+    pack = usable_packs().get(session.get("scheme_key") or "")
+    if pack:
+        reqs, extra = requirements.from_pack(pack, lang), RECOMMENDED
+    else:
+        scheme = scheme_of(session) or ""
+        row = repo.latest_research(db, user_id, session["id"], scheme, "documents")
+        reqs = requirements.from_live((row or {}).get("items", []), session.get("academic_year"))
+        extra = (*RECOMMENDED, "income_certificate")
+        if (profile or {}).get("entry_qualification") not in NO_HSC_PATHS:
+            extra = (*extra, "hsc_marksheet")
+    covered = {t for r in reqs for t in r.doc_types}
+    return reqs + [
+        requirements.Req(
+            id=t,
+            label=DOC_LABELS[t],
+            doc_types=[t],
+            required=False,
+            note=RECOMMENDED_NOTE,
+            origin="recommended",
+        )
+        for t in extra
+        if t not in covered
+    ]
+
+
+def requirement_rows(
+    db: Client,
+    user_id: str,
+    session: Row,
+    lang: str = "en",
+    eff: dict[str, list[Row]] | None = None,
+    docs: list[Row] | None = None,
+) -> list[Row]:
+    """requirements.status() for this session. eff/docs: pass them when already loaded."""
+    sid = session["id"]
+    if eff is None:
+        eff = effective(repo.list_field_values(db, user_id, sid), set())
+    if docs is None:
+        docs = repo.list_documents(db, user_id, sid)
+    profile = repo.get_profile(db, user_id)
+    reqs = session_reqs(db, user_id, session, lang, profile)
+    rows = requirements.status(reqs, profile, requirements.answers(eff), docs)
+    # doc_type: the upload slot; type_labels: what each accepted type is called (the card offers
+    # "Admission letter or Fee receipt").
+    return [
+        r | {"doc_type": r["doc_types"][0], "type_labels": [DOC_LABELS[t] for t in r["doc_types"]]}
+        for r in rows
+    ]
+
+
+class AnswerError(ValueError):
+    pass
+
+
+def find_question(
+    db: Client, user_id: str, session: Row, question_id: str, lang: str = "en"
+) -> Row | None:
+    """{id, text, options} of a question of the chosen scheme: the pack's (they decide documents
+    and eligibility criteria, one answer serves both), else a live-research document condition."""
+    pack = usable_packs().get(session.get("scheme_key") or "")
+    for q in pack.questions if pack else []:
+        if q.id == question_id:
+            return {"id": q.id, "text": q.text.get(lang), "options": q.options}
+    rows = requirement_rows(db, user_id, session, lang)
+    return next((q for r in rows for q in r["questions"] if q["id"] == question_id), None)
+
+
+def store_answer(
+    db: Client,
+    user_id: str,
+    session: Row,
+    question_id: str,
+    answer: str,
+    *,
+    source_type: Literal["voice", "text"],
+    message_id: str | None,
+    via: Literal["tap", "voice", "text"],
+    lang: str = "en",
+) -> None:
+    """The user's answer to a scheme question -> a confirmed field value answers.<id> that points
+    at their message (guardrail 2). Raises AnswerError."""
+    sid = session["id"]
+    q = find_question(db, user_id, session, question_id, lang)
+    if not q:
+        raise AnswerError("no such question for this scholarship")
+    pick = next((o for o in q["options"] if o.casefold() == answer.strip().casefold()), None)
+    if pick is None:
+        raise AnswerError(f"answer with one of {q['options']}")
+    key = f"{requirements.ANSWER}{question_id}"
+    repo.add_field_value(
+        db,
+        user_id,
+        sid,
+        {
+            "field_key": key,
+            "value": pick,
+            "value_normalized": canon(key, pick),
+            "source_type": source_type,
+            "source_ref": {"message_id": message_id, "via": via, "question_id": question_id},
+            "confidence": 1.0,
+            "status": "confirmed",
+        },
+    )
+    audit = {"question_id": question_id, "answer": pick, "via": via}
+    repo.write_audit(db, user_id, sid, "requirement.answered", audit, "user")
+
+
+def record_answer(
+    db: Client,
+    user_id: str,
+    session: Row,
+    question_id: str,
+    answer: str,
+    *,
+    source_type: Literal["voice", "text"],
+    message_id: str | None,
+    via: Literal["tap", "voice", "text"],
+    lang: str = "en",
+) -> list[Row]:
+    """store_answer, then the checks run again so a flag the answer settles closes. -> the
+    requirement rows after it. For documents onwards; the eligibility card needs only
+    store_answer. Raises AnswerError."""
+    store_answer(
+        db,
+        user_id,
+        session,
+        question_id,
+        answer,
+        source_type=source_type,
+        message_id=message_id,
+        via=via,
+        lang=lang,
+    )
+    asked = any(
+        f["reason_code"] == "requirement_question"
+        for f in repo.list_flags(db, user_id, session["id"], "open")
+    )
+    run_checks(db, user_id, session, include_missing=asked)
+    return requirement_rows(db, user_id, session, lang)
+
+
 def _signature(flag: Row) -> list[str]:
     """What the flag is about: its values, and for a document check the document itself (so a
     newly uploaded file with the same problem is asked about again)."""
@@ -335,11 +497,15 @@ def reread_after(flag: Row) -> str | None:
 def readiness(db: Client, user_id: str, session: Row) -> Row:
     """The readiness card: every value the form will use, with its source, and what still blocks.
     Ready = no open blocking flag (acknowledged ones are listed with the user's reason)."""
-    live, by_id, _, firm = _load(db, user_id, session["id"])
+    live, by_id, eff, firm = _load(db, user_id, session["id"])
     flags = repo.list_flags(db, user_id, session["id"])
     open_ = [f for f in flags if f["status"] == "open"]
+    reqs = requirement_rows(db, user_id, session, eff=eff, docs=list(by_id.values()))
+    read = [r for r in reqs if r["status"] == "extracted"]
     fields = []
     for key in sorted(firm, key=field_label):
+        if key.startswith(requirements.ANSWER):  # an answer about documents, not a form value
+            continue
         if b := best(firm[key]):
             v = candidate_view(b, by_id)
             # A box "as per Aadhaar" takes what the Aadhaar says, even where another value won.
@@ -371,7 +537,8 @@ def readiness(db: Client, user_id: str, session: Row) -> Row:
             for f in flags
             if f["status"] == "acknowledged"
         ],
-        "documents": [DOC_LABELS.get(t, t) for t in live],
+        "documents": [r["label"] for r in read]
+        + [DOC_LABELS.get(t, t) for t in live if not any(t in r["doc_types"] for r in read)],
         "fields": fields,
         "note": "Aster checked your documents against each other. The scheme authority makes the "
         "final decision; you review and submit the form yourself.",
@@ -470,29 +637,50 @@ def run_checks(
             )
     repo.add_rule_evaluations(db, user_id, sid, evals)
 
-    required = {d.doc_type: d for d in (pack.documents if pack else []) if d.required}
-    for f in existing:  # an uploaded document closes its missing-document flag (logged)
-        if f["type"] == "missing_doc" and f["status"] == "open" and f["field_key"] in live:
-            resolution = {"by": "system", "reason": "document uploaded"}
-            repo.update_flag(db, user_id, f["id"], {"status": "resolved", "resolution": resolution})
-            f["status"] = "resolved"
-            repo.write_audit(
-                db, user_id, sid, "flag.resolved", {"flag_id": f["id"], "by": "system"}
-            )
-    if include_missing:
-        for t, doc in required.items():
-            if t == "other" or doc.required_if or t in live:
+    # Scheme requirements. An open missing-document flag closes itself once its requirement is
+    # read, answered or not needed (logged); new ones only when the user says they're done.
+    docs = [d | {"status": "extracted"} if d["id"] == just_read else d for d in by_id.values()]
+    rows = requirement_rows(db, user_id, session, eff=eff, docs=docs)
+    known = {r["id"]: r for r in rows}
+    want = {
+        r["id"]: "required_doc_missing" if r["need"] == "required" else "requirement_question"
+        for r in requirements.blocking(rows)
+    }
+    for f in existing:
+        if f["type"] != "missing_doc" or f["status"] != "open":
+            continue
+        r = known.get(f["field_key"] or "")
+        if r is None:  # raised before requirements had ids: closed by its document type
+            if f["field_key"] not in live:
                 continue
+            why = "document uploaded"
+        elif want.get(r["id"]) == f["reason_code"]:
+            continue
+        elif r["status"] == "extracted":
+            why = "document uploaded"
+        else:
+            why = "answered" if f["reason_code"] == "requirement_question" else "not needed"
+        resolution = {"by": "system", "reason": why}
+        repo.update_flag(db, user_id, f["id"], {"status": "resolved", "resolution": resolution})
+        f["status"] = "resolved"
+        repo.write_audit(db, user_id, sid, "flag.resolved", {"flag_id": f["id"], "by": "system"})
+    if include_missing:
+        for rid, reason in want.items():
+            r = known[rid]
+            message = "missing_doc" if reason == "required_doc_missing" else "requirement_question"
             save(
                 {
                     "type": "missing_doc",
                     "severity": "block",
-                    "field_key": t,
-                    "reason_code": "required_doc_missing",
+                    "field_key": rid,
+                    "reason_code": reason,
                     "details": {
-                        "label": DOC_LABELS.get(t, t),
-                        "message": MESSAGES["missing_doc"],
-                        "source": doc.source.model_dump(),
+                        "label": r["label"],
+                        "message": MESSAGES[message],
+                        "source": r["source"],
+                        "doc_type": r["doc_types"][0],
+                        "requirement_id": rid,
+                        "question": r["ask"],
                         "candidate_ids": [],
                     },
                 }
@@ -660,7 +848,13 @@ def flag_card(flag: Row, lang: str) -> tuple[str, Row]:
         "candidates": cands,
         "can_pick": pickable and bool(cands),
         "can_type": typeable,
-        "doc": {"doc_type": flag["field_key"], "label": d.get("label"), "source": d.get("source")}
+        "doc": {
+            "doc_type": d.get("doc_type") or flag["field_key"],
+            "requirement_id": d.get("requirement_id"),
+            "label": d.get("label"),
+            "source": d.get("source"),
+            "question": d.get("question"),
+        }
         if flag["type"] == "missing_doc"
         else None,
         "status": flag["status"],
@@ -670,7 +864,7 @@ def flag_card(flag: Row, lang: str) -> tuple[str, Row]:
 def flag_summary(flag: Row) -> Row:
     """What the LLM sees: no candidate ids it could misuse, values only for its sentence."""
     d = flag["details"]
-    return {
+    out = {
         "flag_id": flag["id"],
         "type": flag["type"],
         "severity": flag["severity"],
@@ -679,3 +873,6 @@ def flag_summary(flag: Row) -> Row:
         "values": [f"{c['value']} ({c['label']})" for c in d.get("candidates", [])],
         "status": flag["status"],
     }
+    if (q := d.get("question")) and q.get("id"):  # answered with answer_requirement
+        out |= {"question_id": q["id"], "question": q["text"], "options": q["options"]}
+    return out

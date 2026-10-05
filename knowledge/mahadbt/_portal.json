@@ -1,4 +1,20 @@
 {
   "name": "MahaDBT (Maharashtra scholarships)",
-  "url": "https://mahadbt.maharashtra.gov.in"
+  "url": "https://mahadbt.maharashtra.gov.in",
+  "cycles": {
+    "2025-26": {
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/home/index",
+        "quote": "The MahaDBT 1.0 portal is currently active for acceptance of fresh applications for the Academic Year 2025-26."
+      }
+    },
+    "2026-27": {
+      "url": "https://mahadbt2.maharashtra.gov.in/",
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/home/index",
+        "quote": "Fresh and renewal applications for the Academic Year 2026-27 will be accepted only through the MahaDBT 2.0 Portal."
+      }
+    }
+  }
 }

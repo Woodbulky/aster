@@ -82,9 +82,32 @@ def update_session(db: Client, user_id: str, session_id: str, values: Row) -> Ro
 _ID_NUMBER = re.compile(r"(?<!\d)(?:\d{4}[ -]?\d{4}[ -]?\d{4}|\d{11,18})(?!\d)")
 
 
+# A certificate's own number ("क्रमांक: 42031458382" on an income certificate) is not an Aadhaar or
+# bank number: masking it made extraction pick another number (seen live). "मांक": PDF text layers
+# drop the "क्र" conjunct. Aadhaar-sized (12 digits) or near an Aadhaar/bank word stays masked.
+_CERT_LABEL = re.compile(
+    r"(?:मांक|certificate\s*(?:no|number)|cert\s*(?:no|number))[^\d\n]{0,20}$", re.I
+)
+_ID_WORDS = re.compile(r"aadha+r|आधार|uid|account|a/c|खाते|खाता|बँक|बैंक|bank", re.I)
+
+
+def _is_id(text: str, m: re.Match[str]) -> bool:
+    if len(re.sub(r"\D", "", m.group())) == 12:
+        return True
+    before = text[max(0, m.start() - 40) : m.start()]
+    return not _CERT_LABEL.search(before) or bool(_ID_WORDS.search(before))
+
+
+def id_numbers(text: str) -> list[re.Match[str]]:
+    """The Aadhaar/bank-like numbers in text (guardrail 6), not a labelled certificate number."""
+    return [m for m in _ID_NUMBER.finditer(text) if _is_id(text, m)]
+
+
 def redact_ids(text: str) -> str:
     """Guardrail 6: keep only the last 4 digits of an Aadhaar/bank-like number."""
-    return _ID_NUMBER.sub(lambda m: f"[number ending {m.group()[-4:]}]", text)
+    return _ID_NUMBER.sub(
+        lambda m: f"[number ending {m.group()[-4:]}]" if _is_id(text, m) else m.group(), text
+    )
 
 
 def add_message(db: Client, user_id: str, session_id: str, values: Row) -> Row | None:
@@ -236,7 +259,8 @@ def latest_read_document(db: Client, user_id: str, doc_type: str, not_session: s
 
 def list_documents(db: Client, user_id: str, session_id: str, full: bool = False) -> list[Row]:
     """Oldest first. full=True adds the OCR json (pages + lines)."""
-    cols = "id,doc_type,status,error,created_at,page_count" + (",ocr" if full else "")
+    cols = "id,doc_type,requirement_id,status,error,created_at,page_count"
+    cols += ",ocr" if full else ""
     q = db.table("documents").select(cols)
     return q.eq("session_id", session_id).eq("user_id", user_id).order("created_at").execute().data
 

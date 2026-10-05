@@ -14,21 +14,21 @@ Phase = Literal[
     "done",
 ]
 
-# PRODUCT.md "Onboarding": ~10 core details. Trim here to shorten the demo.
-CORE_FIELDS: tuple[str, ...] = (
+# Just enough to rank schemes (PRODUCT.md "Onboarding"). Everything else (dob, district, 10th/12th
+# results, year of study, admission year, course mode...) is asked when a scheme or form needs it,
+# or read from a document: a diploma student is never asked for 12th results to see schemes.
+DISCOVERY: tuple[str, ...] = (
     "full_name",
-    "dob",
-    "gender",
-    "district",
+    "current_course",
+    "entry_qualification",
     "category",
     "annual_family_income",
-    "ssc_year",
-    "ssc_percentage",
-    "hsc_year",
-    "hsc_percentage",
-    "current_course",
-    "current_year",
 )
+# What the current course was joined after (profiles.entry_qualification).
+ENTRY_PATHS = ("ssc", "hsc", "diploma", "graduation")
+HSC_FIELDS = ("hsc_board", "hsc_year", "hsc_percentage")
+# Paths with no Class 12 in them: 12th details do not apply (unless the user gave them anyway).
+NO_HSC_PATHS = ("ssc", "diploma")
 
 # suggest_schemes + set_form stay available after choose_form so the user can switch schemes;
 # the phase then follows the new scheme's research state.
@@ -49,6 +49,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     ),
     "eligibility": (
         "check_eligibility",
+        "answer_requirement",
         "get_profile",
         "propose_profile_update",
         "fetch_url",
@@ -57,6 +58,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     ),
     "documents": (
         "request_documents",
+        "answer_requirement",
         "get_document_status",
         "run_verification",
         "list_flags",
@@ -67,6 +69,7 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
     ),
     "verification": (
         "run_verification",
+        "answer_requirement",
         "list_flags",
         "ask_resolution",
         "resolve_flag",
@@ -95,7 +98,15 @@ TOOLS_BY_PHASE: dict[str, tuple[str, ...]] = {
 
 def missing_core(profile: dict[str, Any] | None) -> list[str]:
     p = profile or {}
-    return [k for k in CORE_FIELDS if p.get(k) in (None, "")]
+    return [k for k in DISCOVERY if p.get(k) in (None, "")]
+
+
+def not_applicable_fields(profile: dict[str, Any] | None) -> set[str]:
+    """Profile fields that do not apply on this education path and are blank (so never asked)."""
+    p = profile or {}
+    if p.get("entry_qualification") not in NO_HSC_PATHS:
+        return set()
+    return {k for k in HSC_FIELDS if p.get(k) in (None, "")}
 
 
 def scheme_of(session: dict[str, Any]) -> str | None:

@@ -3,7 +3,7 @@
   "portal": "demo",
   "status": "verified",
   "verified_by": "test",
-  "verified_on": "2026-10-03",
+  "verified_on": "2026-10-03", "academic_year": "2026-27", "apply_url": "https://scholarships.demo.gov.in/apply", "deadlines_checked_on": "2026-10-03",
   "name": { "en": "Open Merit" },
   "department": "Demo dept",
   "official_urls": ["https://scholarships.demo.gov.in/open"],

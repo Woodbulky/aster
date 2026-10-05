@@ -572,3 +572,62 @@ User decisions: keep `get_user` for JWT checks (no local verification); all thre
 **Open issues**
 - Not measured: cold-start time saved on Render, the 3-document upload (one summary) in the browser, and `llm_first_token_ms` for a flag answer on the GPU vs Groq.
 - Cards that grow after the jump on reload (signed-URL images) can leave a small gap until the next item.
+
+## 2026-10-05 · Scheme requirements tracked one by one; packs and research per academic year (user-approved plan)
+Why: a student could upload everything Aster asked for and still miss a hostel certificate, a declaration or last year's marksheet. `other` documents were plain "also keep ready" text, `required_if` was never evaluated, and live-research documents were never checked. Separately, packs and the shared research cache ignored the academic year: last year's rules or the old MahaDBT 1.0 portal could reach a 2026-27 student.
+
+**What changed**
+- **Requirements** (`verify/requirements.py`, one `status()` for the checklist card, the missing-document check and the readiness card). Pack documents have an `id`, `also_accepts`, `required_if` over `profile.*` / `answers.<question>`, declared `questions`, `stage` (apply / institute / later), `period`, `holder`. Need: required / optional / ask / not_needed / later.
+  - An unknown condition is a question (`missing_doc` / `requirement_question`, blocking), never silently optional.
+  - Answers: tool `answer_requirement` (voice/text; `user_words` must match the user's message) or a tap (`POST …/requirements/answer`, stored as a `ui` user message the value points at). Either way a confirmed `answers.<id>` field value.
+  - Flags close themselves when the requirement is read, answered or not needed (logged).
+  - `documents.requirement_id` (`0010_requirements`) keeps two `other` documents apart.
+- The 7 packs got ids, real conditions (gap, hostel, father's death, married, professional course, CAP course, fresh vs renewal for NSP CSSS), alternatives, and `stage: later` for LIC's cancelled cheque. All still `draft`.
+- **Live research documents** carry `doc_types`, `required` (yes / if / optional), `condition` and become the same tracked requirements. `condition` is redacted before sharing.
+- **Per academic year:**
+  - `current_cycle()` (`ACADEMIC_YEAR`, else June-based); `form_sessions.academic_year` is set at `set_form`.
+  - Verified packs are usable only for their `academic_year`, and need `apply_url` + `deadlines_checked_on`.
+  - `research_cache` key is `<cycle>|<name>`. `year_on_page` is kept only if that year is on the stored page, and another year is labelled.
+  - `_portal.json` `cycles`: MahaDBT 2026-27 → `https://mahadbt2.maharashtra.gov.in/`, quoting the official notice on mahadbt.maharashtra.gov.in.
+- **Freshness:** rules 180 days, deadlines/portal 14. The eligibility card says "Rules for <cycle>, checked by the team on <date>"; a deadline not checked recently says so. `/health` shows `cycle` and `stale`. `python -m app.research.packs stale` lists what is due.
+
+**How verified**
+- pytest **433 passed** (new `test_requirements.py`; question → answer → flag closes → missing-document flag; two `other` documents; alternatives; tap answer API with evidence; the tool refuses words the user didn't say; per-cycle cache isolation; `year_on_page` must be on the page; cycle filter; freshness clocks; validate rejects a verified pack for another cycle). ruff clean.
+- `packs validate` passes **online**: every source and the new MahaDBT 2.0 notice quote were found live.
+- Migration applied via MCP; types regenerated; advisors show no new findings.
+- Web: lint, typecheck, build.
+- `/guardrails`: 3 fixes.
+  1. `answer_requirement` needs the user's words.
+  2. A tap answer is refused if its message can't be stored.
+  3. Shared `condition` text goes through `redact_ids`.
+
+**Open issues**
+- **No verified pack yet:** prod (`APP_ENV=prod`) still offers 0 packs; every scheme goes to live research. A human must verify 2–3 packs for 2026-27 (suggested: NSP CSSS, LIC Golden Jubilee; one MahaDBT 2.0 scheme only if its 2026-27 window is open). The current MahaDBT packs quote 1.0 `SchemeData` pages and need re-sourcing. MahaDBT 2.0 asks for fewer documents.
+- Not run live in the browser yet (checklist questions, tap answers, the type picker, voice `answer_requirement` with the real model).
+- Document year (`period`) is display only, except the existing income-certificate checks.
+
+## 2026-10-05 · Eligibility follows the education path and the scheme's conditions (user-approved plan)
+
+**Problem:** onboarding required both 10th and 12th details (a diploma student was asked for Class 12), and some pack logic checked less than its rule says ("approved course" = has an SSC year; "admitted in 2026-27" = year of study 1; the professional/non-professional income limits were both checked for everyone). 13 criteria had no logic, so Aster could not ask about them.
+
+**What changed**
+- **Minimal discovery:** `phases.DISCOVERY` = name, current course, `entry_qualification` (new: ssc / hsc / diploma / graduation = what the course was joined after), category, income. Everything else is asked when a scheme needs it. `not_applicable_fields()`: on an `ssc`/`diploma` path 12th fields are never asked (a rule that wants them reads "needs confirmation, check the rule for your route", never a verdict). The live-research "recommended 12th marksheet" is skipped on those paths.
+- **Profile:** migration `0011_education_path` adds `entry_qualification`, `admission_year`, `course_mode` (regular / part_time / distance / online); `ProfileIn`, the confirm card enums, the profile form, TS types, i18n (en/mr/hi).
+- **Pack schema:** `criteria[].logic` may read `answers.<declared question>` and `computed.cycle_start`; `applies_if` + `applies_note` make a rule "not applicable". Validated at pack level.
+- **Evaluation** (`agent/tools/eligibility.py`): facts = profile + this application's answers + cycle start (the pack's cycle). New status `not_applicable`; an unknown criterion lists `needs` (question / profile field / read-at-source) and reads "Needs confirmation — <exact condition>". `eligibility_payload()` is shared by the tool and the new `POST …/eligibility/answer`.
+- **Answers:** `store_answer` (the part of `record_answer` that stores) looks questions up in the pack first, so one answer serves a criterion and a document condition. `answer_requirement` is now also an eligibility-phase tool and returns the eligibility card; new `ui_event eligibility_answered`.
+- **Packs** (all 7 still `draft`; quotes and sources untouched): approved course, other scholarships, hosteller, first two children, admission category, back-to-back drop, degree vs diploma, course mode, professional-course income split, first-year-of-this-cycle (`admission_year == computed.cycle_start` and year 1). Rules nobody can answer for the student (attendance, board percentile) stay `logic: null` = "read it at the source".
+- **Web:** `EligibilityCard` shows needs-confirmation / not-applicable rows and question buttons; legacy cards (no `needs`, no `not_applicable` count) still render.
+
+**How verified**
+- pytest **445 passed** (new `test_eligibility.py`: income split, exact needs, first-year cycle, 12th not asked on a diploma path, read-at-source, pack validation, answer sourced to the user's message, answer tool returns the eligibility card; API test for the tap endpoint; phase tests for the 5-field discovery). ruff clean.
+- `packs validate` passes online and offline.
+- Migration applied via MCP, types updated, advisors show nothing new (existing findings only).
+- Web: lint, typecheck, build.
+
+**Open issues**
+- Not run live in the browser yet (eligibility taps, voice answers with the real model, the profile form's new selects).
+- Existing profiles without `entry_qualification` are asked it once.
+- Live-researched schemes stay all "needs confirmation" (their rules are quotes, not logic). No "I'm not sure" button: an unanswered question already stays "needs confirmation".
+- A definite `not_met` is not shown while a guard question is unanswered (e.g. income over both limits before "professional course?" is answered): it reads "needs confirmation".
+- `current_year` can still go stale across academic years.

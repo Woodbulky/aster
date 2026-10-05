@@ -53,7 +53,13 @@ def test_get_profile_masks_sensitive(store: FakeStore) -> None:
         "caste": "provided",
         "aadhaar_last4": "provided",
     }
-    assert "district" in res.data["missing_core"]
+    # only what is needed to suggest schemes: not district, dob, 10th/12th results
+    assert res.data["missing_core"] == [
+        "current_course",
+        "entry_qualification",
+        "category",
+        "annual_family_income",
+    ]
 
 
 def test_propose_creates_card_but_saves_nothing(store: FakeStore) -> None:
@@ -128,7 +134,8 @@ def test_set_form(store: FakeStore) -> None:
     assert res.ok
     s = store.sessions["s1"]
     assert (s["portal"], s["scheme_key"], s["scheme_name"]) == ("demo", "demo.obc_aid", "OBC Aid")
-    assert s["portal_url"] == "https://scholarships.demo.gov.in"  # from _portal.json
+    assert s["portal_url"] == "https://scholarships.demo.gov.in/apply"  # the pack's apply_url
+    assert s["academic_year"] == "2026-27"
     assert store.audit[-1][0] == "form.set"
     # any other scholarship: just the name, no URL until research finds one
     res = run_tool(ctx(store), "set_form", {"scheme_name": "Tata Capital Pankh"})

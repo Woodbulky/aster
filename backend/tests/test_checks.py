@@ -325,6 +325,56 @@ def test_missing_required_document_then_uploaded(mem: Mem) -> None:
     assert mem.flags[0]["resolution"]["by"] == "system"
 
 
+def test_requirements_question_other_docs_and_answer(
+    mem: Mem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_requirements import HOSTEL
+
+    monkeypatch.setattr(checks, "usable_packs", lambda: {"demo.hostel": HOSTEL})
+    session = {"id": SID, "scheme_key": "demo.hostel", "phase": "verification"}
+    mem.doc("income_certificate", annual_family_income="120000")
+    mem.doc("other")
+    mem.docs[-1]["requirement_id"] = "declaration"
+    checks.run_checks(None, UID, session, include_missing=True)
+    assert mem.open_flags() == [
+        ("missing_doc", "required_doc_missing", "admission"),
+        ("missing_doc", "requirement_question", "hostel_certificate"),
+    ]
+    q = next(f for f in mem.flags if f["reason_code"] == "requirement_question")
+    kind, card = checks.flag_card(q, "en")
+    assert kind == "missing_item" and card["doc"]["question"]["id"] == "hosteller"
+    assert card["doc"]["doc_type"] == "other"  # the upload slot, not the requirement id
+
+    with pytest.raises(checks.AnswerError, match="one of"):
+        checks.record_answer(
+            None, UID, session, "hosteller", "maybe", source_type="text", message_id="m1", via="tap"
+        )
+    checks.record_answer(
+        None, UID, session, "hosteller", "Yes", source_type="voice", message_id="m1", via="voice"
+    )
+    answer = mem.fields[-1]
+    assert (answer["field_key"], answer["value"], answer["status"]) == (
+        "answers.hosteller",
+        "yes",
+        "confirmed",
+    )
+    assert answer["source_ref"]["message_id"] == "m1"  # guardrail 2
+    assert q["status"] == "resolved" and q["resolution"]["reason"] == "answered"
+    # "yes" makes the hostel certificate required: asked again as a missing document.
+    assert ("missing_doc", "required_doc_missing", "hostel_certificate") in mem.open_flags()
+
+    checks.record_answer(
+        None, UID, session, "hosteller", "no", source_type="text", message_id="m2", via="tap"
+    )
+    assert ("missing_doc", "required_doc_missing", "hostel_certificate") not in mem.open_flags()
+    mem.doc("fee_receipt", institute_name="X College")  # accepted for "admission"
+    checks.run_checks(None, UID, session, include_missing=True)
+    assert mem.open_flags() == []
+    r = checks.readiness(None, UID, session)
+    assert r["documents"] == ["income_certificate", "declaration", "admission"]
+    assert not any(f["field_key"].startswith("answers.") for f in r["fields"])
+
+
 def test_low_confidence_value_is_flagged(mem: Mem) -> None:
     mem.doc("aadhaar", gender="Male")
     mem.fields[-1]["confidence"] = 0.4
@@ -423,6 +473,12 @@ def test_typed_scheme_name_finds_its_pack(monkeypatch: pytest.MonkeyPatch) -> No
     assert forms.pack_for_name("OBC aid") == "demo.obc_aid"
     assert forms.pack_for_name("Reliance Foundation scholarship") is None
     assert forms.pack_for_name("scholarship") is None  # ambiguous: no guess
+    # Seen: the only usable pack was picked for "LIC scholarship" on the word "scholarship".
+    only = {"demo.obc_aid": forms.usable_packs()["demo.obc_aid"]}
+    monkeypatch.setattr(forms, "usable_packs", lambda: only)
+    assert forms.pack_for_name("LIC scholarship") is None
+    assert forms.pack_for_name("मला ओबीसी मदत शिष्यवृत्ती हवी") == "demo.obc_aid"
+    assert forms.pack_for_name("मला खुली शिष्यवृत्ती हवी") is None  # no shared vowel-sign scraps
 
 
 SAID = "1,48,000 is right, the certificate is latest. 12th year is 2025, I passed 12th in 2025"
@@ -531,3 +587,34 @@ def test_readiness_keeps_the_aadhaar_reading_for_as_per_aadhaar_boxes(mem: Mem) 
     mem.doc("aadhaar", full_name="Harsh Padam Kasliwal")
     rows = {f["field_key"]: f for f in checks.readiness(None, UID, SESSION)["fields"]}
     assert rows["full_name"]["on_aadhaar"] == "Harsh Padam Kasliwal"
+
+
+def test_answer_requirement_tool_needs_the_users_words(
+    mem: Mem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Guardrails 2/3: a guessed "no" would silently make a required document "not needed".
+    from types import SimpleNamespace
+
+    from app.agent.tools import Ctx, run_tool
+    from tests.test_requirements import HOSTEL
+
+    monkeypatch.setattr(checks, "usable_packs", lambda: {"demo.hostel": HOSTEL})
+    session = {"id": SID, "scheme_key": "demo.hostel", "phase": "documents"}
+
+    def ctx(text: str, message_id: str | None = "m9") -> Ctx:
+        return Ctx(
+            db=SimpleNamespace(), user_id=UID, session=session, lang="mr",
+            message_id=message_id, input_mode="voice", user_text=text,
+        )  # fmt: skip
+
+    args = {"question_id": "hosteller", "answer": "no", "user_words": "नाही, मी घरी राहतो"}
+    assert not run_tool(ctx("हो"), "answer_requirement", args).ok  # not what they said
+    assert not run_tool(ctx("नाही, मी घरी राहतो", None), "answer_requirement", args).ok
+    assert mem.fields == []
+    res = run_tool(ctx("नाही, मी घरी राहतो"), "answer_requirement", args)
+    assert res.ok and res.card.kind == "document_checklist"
+    [answer] = [f for f in mem.fields if f["field_key"] == "answers.hosteller"]
+    assert (answer["value"], answer["source_type"]) == ("no", "voice")
+    assert answer["source_ref"]["message_id"] == "m9"
+    items = {i["id"]: i for i in res.card.payload["items"]}
+    assert items["hostel_certificate"]["need"] == "not_needed"

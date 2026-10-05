@@ -97,18 +97,26 @@
         "hi": ""
       },
       "logic": {
-        "!!": [
+        "or": [
           {
-            "var": "profile.ssc_year"
+            "!!": [
+              {
+                "var": "profile.ssc_year"
+              }
+            ]
+          },
+          {
+            "!!": [
+              {
+                "var": "profile.entry_qualification"
+              }
+            ]
           }
         ]
       },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
         "quote": "Student should be passes SSC/equivalent Matric."
-      },
-      "ask_if_unknown": {
-        "field_key": "ssc_year"
       }
     },
     {
@@ -118,7 +126,109 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "in": [
+          {
+            "var": "answers.professional_courses_availed"
+          },
+          [
+            "0",
+            "1"
+          ]
+        ]
+      },
+      "applies_if": {
+        "==": [
+          {
+            "var": "answers.professional_course"
+          },
+          "yes"
+        ]
+      },
+      "applies_note": {
+        "en": "Only for professional courses",
+        "mr": "फक्त व्यावसायिक अभ्यासक्रमांसाठी",
+        "hi": "सिर्फ़ व्यावसायिक कोर्स के लिए"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Only 2 professional Courses are allowed."
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "had_gap",
+      "text": {
+        "en": "Did you have a gap (a year without study) in your education?",
+        "mr": "तुमच्या शिक्षणात खंड (शिक्षण न घेतलेले वर्ष) पडला होता का?",
+        "hi": "क्या आपकी पढ़ाई में कोई अंतराल (बिना पढ़ाई का साल) रहा है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Gap & Self Declaration(if required)"
+      }
+    },
+    {
+      "id": "hosteller",
+      "text": {
+        "en": "Do you live in a hostel?",
+        "mr": "तुम्ही वसतिगृहात राहता का?",
+        "hi": "क्या आप हॉस्टल में रहते हैं?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Hostel Certificate (if required)"
+      }
+    },
+    {
+      "id": "father_deceased",
+      "text": {
+        "en": "Has your father (or guardian) passed away? Answer only if you are comfortable; it decides one document.",
+        "mr": "तुमचे वडील (किंवा पालक) हयात नाहीत का? सांगणे ऐच्छिक आहे; त्यावर एक कागदपत्र ठरते.",
+        "hi": "क्या आपके पिता (या अभिभावक) का निधन हो चुका है? बताना आपकी इच्छा है; इससे एक दस्तावेज़ तय होता है।"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Father date Certificate(if required)"
+      }
+    },
+    {
+      "id": "married",
+      "text": {
+        "en": "Are you a married woman student?",
+        "mr": "तुम्ही विवाहित विद्यार्थिनी आहात का?",
+        "hi": "क्या आप विवाहित छात्रा हैं?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Husband Income Certificate(if girl is married)"
+      }
+    },
+    {
+      "id": "professional_course",
+      "text": {
+        "en": "Is your course a professional course (as the scheme defines it)?",
+        "mr": "तुमचा अभ्यासक्रम (योजनेनुसार) व्यावसायिक अभ्यासक्रम आहे का?",
+        "hi": "क्या आपका कोर्स (योजना के अनुसार) व्यावसायिक कोर्स है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
+        "quote": "Only 2 professional Courses are allowed."
+      }
+    },
+    {
+      "id": "professional_courses_availed",
+      "text": {
+        "en": "For how many professional courses have you already received this scholarship?",
+        "mr": "तुम्हाला ही शिष्यवृत्ती आधीच किती व्यावसायिक अभ्यासक्रमांसाठी मिळाली आहे?",
+        "hi": "आपको यह छात्रवृत्ति पहले कितने व्यावसायिक कोर्स के लिए मिल चुकी है?"
+      },
+      "options": [
+        "0",
+        "1",
+        "2 or more"
+      ],
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
         "quote": "Only 2 professional Courses are allowed."
@@ -127,6 +237,7 @@
   ],
   "documents": [
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -138,9 +249,11 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
         "quote": "Income Certificate(Provided by Tahesildar)"
-      }
+      },
+      "holder": "either"
     },
     {
+      "id": "caste_certificate",
       "doc_type": "caste_certificate",
       "required": true,
       "required_if": null,
@@ -155,6 +268,7 @@
       }
     },
     {
+      "id": "last_exam_marksheet",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -169,6 +283,7 @@
       }
     },
     {
+      "id": "ssc_or_hsc_marksheet",
       "doc_type": "hsc_marksheet",
       "required": true,
       "required_if": null,
@@ -180,12 +295,23 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51ACE99921E698B1EE85995B38445F14746E1B0DD7E66FFF88B",
         "quote": "Mark sheet for SSC or HSC"
-      }
+      },
+      "also_accepts": [
+        "ssc_marksheet"
+      ]
     },
     {
+      "id": "gap_certificate",
       "doc_type": "gap_certificate",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.had_gap"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Gap certificate + self declaration (if you had a gap)",
         "mr": "",
@@ -197,9 +323,17 @@
       }
     },
     {
+      "id": "hostel_certificate",
       "doc_type": "other",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.hosteller"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Hostel certificate (if you live in a hostel)",
         "mr": "",
@@ -211,9 +345,17 @@
       }
     },
     {
+      "id": "father_death_certificate",
       "doc_type": "other",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.father_deceased"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Father's death certificate (if applicable)",
         "mr": "",
@@ -225,9 +367,17 @@
       }
     },
     {
+      "id": "husband_income_certificate",
       "doc_type": "other",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.married"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Husband's income certificate (if the student is a married woman)",
         "mr": "",

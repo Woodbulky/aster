@@ -12,13 +12,18 @@ function Items({ title, items }: { title: string; items: ResearchItem[] }) {
       <ul className="mt-1 divide-y divide-border">
         {items.map((it, i) => (
           <li key={i} className="py-2.5">
-            <p className="font-medium">{it.text}</p>
+            <p className="font-medium">
+              {it.text}
+              {it.required === "if" && it.condition && <span className="font-normal text-muted-foreground"> — only if {it.condition}</span>}
+              {it.required === "optional" && <span className="font-normal text-muted-foreground"> — optional</span>}
+            </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Unverified — from{" "}
               <a href={it.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline">
                 {it.site} <ExternalLink className="size-3" />
               </a>{" "}
               on {it.fetched_on}
+              {it.year_on_page && <> · the page is about {it.year_on_page}</>}
             </p>
             <blockquote className="mt-1 border-l-2 border-border pl-3 text-sm text-muted-foreground italic">“{it.quote}”</blockquote>
           </li>

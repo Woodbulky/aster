@@ -34,6 +34,8 @@ class UiEvent(_In):
         "documents_requested",
         "document_processed",
         "flag_resolved",
+        "requirement_answered",
+        "eligibility_answered",
         "screen_share_started",
     ]
     payload: dict[str, Any] = {}

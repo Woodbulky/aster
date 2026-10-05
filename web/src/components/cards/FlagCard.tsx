@@ -4,7 +4,7 @@ import { CheckCircle2, ExternalLink, FileSearch, LoaderCircle, OctagonAlert, Tri
 import { useEffect, useState } from "react";
 
 import { DocumentViewer } from "@/components/cards/FieldReviewCard";
-import { answerFlag, flagState, type FlagState } from "@/lib/documents";
+import { answerFlag, answerRequirement, flagState, type FlagState } from "@/lib/documents";
 import { cn } from "@/lib/utils";
 import type { BBox, FlagCandidate, FlagPayload } from "@/lib/ws/protocol";
 
@@ -20,7 +20,7 @@ function host(url: string) {
 
 /** One problem found across the user's sources. The user picks the right value (or types one)
  * and says why, or keeps it as is with a reason. Aster never picks (guardrail 3). */
-export function FlagCard({ payload, onAnswered }: { payload: FlagPayload; onAnswered: (flagId: string) => void }) {
+export function FlagCard({ payload, lang = "en", onAnswered }: { payload: FlagPayload; lang?: string; onAnswered: (flagId: string) => void }) {
   const [state, setState] = useState<FlagState>({ status: payload.status, resolution: null });
   const [choice, setChoice] = useState<string>("");
   const [typed, setTyped] = useState("");
@@ -60,6 +60,24 @@ export function FlagCard({ payload, onAnswered }: { payload: FlagPayload; onAnsw
     }
   }
 
+  // "Whether this document is needed depends on your answer": answering it settles the flag
+  // (the server closes it and, if the document is then needed, asks for it).
+  const question = payload.doc?.question && "id" in payload.doc.question ? payload.doc.question : null;
+  async function answerQuestion(option: string) {
+    if (!question) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await answerRequirement(payload.session_id, question.id, option, lang);
+      setState({ status: "resolved", resolution: { reason: `${question.text} ${option}`, value: option } });
+      onAnswered(payload.flag_id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const Icon = block ? OctagonAlert : TriangleAlert;
   return (
     <section
@@ -78,6 +96,19 @@ export function FlagCard({ payload, onAnswered }: { payload: FlagPayload; onAnsw
         <a href={payload.doc.source.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">
           Required per {host(payload.doc.source.url)} <ExternalLink className="size-3" />
         </a>
+      )}
+
+      {question && open && (
+        <div className="mt-3 rounded-xl bg-butter/60 px-3 py-2 text-sm" role="group" aria-label={question.text}>
+          <p>{question.text}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {question.options.map((o) => (
+              <button key={o} type="button" disabled={busy} onClick={() => void answerQuestion(o)} className="btn-primary h-9 px-4 text-sm">
+                {o.charAt(0).toUpperCase() + o.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {payload.candidates.length > 0 && (

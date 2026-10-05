@@ -8,6 +8,8 @@ type Field = {
   label: string;
   type?: "text" | "date" | "tel" | "number" | "select";
   options?: readonly string[];
+  /** Shown instead of the stored option value. */
+  labels?: Readonly<Record<string, string>>;
   placeholder?: string;
   hint?: string;
   /** Native constraints: the DB checks still have the final say. */
@@ -59,6 +61,22 @@ export const SECTIONS = [
       { key: "hsc_percentage", label: "12th percentage", type: "number", attrs: PCT },
       { key: "current_course", label: "Current course", placeholder: "e.g. B.E. Computer Engineering" },
       { key: "current_year", label: "Year of study", type: "select", options: ["1", "2", "3", "4", "5", "6"] },
+      {
+        key: "entry_qualification",
+        label: "Joined this course after",
+        type: "select",
+        options: ["ssc", "hsc", "diploma", "graduation"],
+        labels: { ssc: "10th (diploma, ITI, 11th–12th)", hsc: "12th", diploma: "A diploma", graduation: "A degree" },
+        hint: "Decides which results apply: 12th details are skipped if you came after 10th or a diploma",
+      },
+      { key: "admission_year", label: "Year of admission", type: "number", attrs: YEAR },
+      {
+        key: "course_mode",
+        label: "Course mode",
+        type: "select",
+        options: ["regular", "part_time", "distance", "online"],
+        labels: { regular: "Regular (full-time)", part_time: "Part-time", distance: "Distance / correspondence", online: "Online" },
+      },
       { key: "institute_name", label: "College / institute", placeholder: "Full name of your college", wide: true },
     ],
   },
@@ -124,7 +142,9 @@ export function ProfileFields({
               <select id={id} value={v} disabled={readOnly} onChange={(e) => set(e.target.value)} className="field disabled:bg-muted">
                 <option value="">Select…</option>
                 {f.options?.map((o) => (
-                  <option key={o}>{o}</option>
+                  <option key={o} value={o}>
+                    {f.labels?.[o] ?? o}
+                  </option>
                 ))}
               </select>
             ) : (

@@ -59,6 +59,9 @@ class ProfileIn(BaseModel):
     hsc_percentage: Annotated[float, Field(ge=0, le=100)] | None = None
     current_course: Text | None = None
     current_year: Annotated[int, Field(ge=1, le=10)] | None = None
+    entry_qualification: Literal["ssc", "hsc", "diploma", "graduation"] | None = None
+    admission_year: Annotated[int, Field(ge=2000, le=2100)] | None = None
+    course_mode: Literal["regular", "part_time", "distance", "online"] | None = None
     institute_name: Text | None = None
     aadhaar_last4: Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")] | None = None
 

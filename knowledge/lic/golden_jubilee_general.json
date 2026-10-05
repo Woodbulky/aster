@@ -68,11 +68,33 @@
         "hi": ""
       },
       "logic": {
-        "==": [
+        "and": [
           {
-            "var": "profile.current_year"
+            "==": [
+              {
+                "var": "profile.admission_year"
+              },
+              {
+                "var": "computed.cycle_start"
+              }
+            ]
           },
-          1
+          {
+            "==": [
+              {
+                "var": "profile.current_year"
+              },
+              1
+            ]
+          },
+          {
+            "==": [
+              {
+                "var": "answers.degree_course"
+              },
+              "yes"
+            ]
+          }
         ]
       },
       "source": {
@@ -80,7 +102,7 @@
         "quote": "Have taken admission in the academic year 2026-27 for pursuing first year degree course"
       },
       "ask_if_unknown": {
-        "field_key": "current_year"
+        "field_key": "admission_year"
       }
     },
     {
@@ -113,10 +135,32 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "and": [
+          {
+            "!=": [
+              {
+                "var": "profile.course_mode"
+              },
+              "part_time"
+            ]
+          },
+          {
+            "!=": [
+              {
+                "var": "profile.course_mode"
+              },
+              "distance"
+            ]
+          }
+        ]
+      },
       "source": {
         "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
         "quote": "Correspondence or Part Time (Evening or Night Classes) and/or through Open Universities are not eligible for Scholarship."
+      },
+      "ask_if_unknown": {
+        "field_key": "course_mode"
       }
     },
     {
@@ -126,7 +170,14 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.trust_scholarship"
+          },
+          "no"
+        ]
+      },
       "source": {
         "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
         "quote": "Candidates who are already receiving Scholarship from other Trust / Institution will not be considered for LIC GJF Scholarship."
@@ -135,6 +186,7 @@
   ],
   "documents": [
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -146,9 +198,11 @@
       "source": {
         "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
         "quote": "Candidates are required to submit Income certificate issued by competent Revenue Authorities of the State"
-      }
+      },
+      "holder": "either"
     },
     {
+      "id": "hsc_marksheet",
       "doc_type": "hsc_marksheet",
       "required": true,
       "required_if": null,
@@ -163,8 +217,9 @@
       }
     },
     {
+      "id": "cancelled_cheque",
       "doc_type": "other",
-      "required": false,
+      "required": true,
       "required_if": null,
       "text": {
         "en": "Cancelled cheque + bank details (after selection)",
@@ -174,7 +229,8 @@
       "source": {
         "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
         "quote": "copy of cancelled cheque with name of beneficiary is compulsory"
-      }
+      },
+      "stage": "later"
     }
   ],
   "computed_facts": {},
@@ -198,5 +254,31 @@
     "Not for post-graduation; integrated UG+PG courses are covered (page text).",
     "Selection is merit-based per LIC division: meeting the criteria does not mean selection.",
     "The 2026 deadline (30.09.2026) has passed as of 2026-10-03."
+  ],
+  "questions": [
+    {
+      "id": "degree_course",
+      "text": {
+        "en": "Is this a degree course (not a diploma or certificate course)?",
+        "mr": "हा पदवी अभ्यासक्रम आहे का (डिप्लोमा किंवा प्रमाणपत्र अभ्यासक्रम नाही)?",
+        "hi": "क्या यह डिग्री कोर्स है (डिप्लोमा या सर्टिफ़िकेट कोर्स नहीं)?"
+      },
+      "source": {
+        "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
+        "quote": "Have taken admission in the academic year 2026-27 for pursuing first year degree course"
+      }
+    },
+    {
+      "id": "trust_scholarship",
+      "text": {
+        "en": "Are you already receiving a scholarship from another trust or institution? (Government scholarships don't count.)",
+        "mr": "तुम्हाला आधीच दुसऱ्या ट्रस्ट/संस्थेची शिष्यवृत्ती मिळते का? (सरकारी शिष्यवृत्ती मोजली जात नाही.)",
+        "hi": "क्या आपको पहले से किसी दूसरे ट्रस्ट/संस्था की छात्रवृत्ति मिलती है? (सरकारी छात्रवृत्ति गिनी नहीं जाती।)"
+      },
+      "source": {
+        "url": "https://www.licindia.in/documents/d/guest/golden-jubilee-scholarship-scheme-2026",
+        "quote": "Candidates who are already receiving Scholarship from other Trust / Institution will not be considered for LIC GJF Scholarship."
+      }
+    }
   ]
 }

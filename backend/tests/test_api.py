@@ -247,6 +247,15 @@ def test_confirm_other_users_proposal(confirm, store) -> None:
         ("acct 12345678901", "acct [number ending 8901]"),
         # kept: mobile, income, years, percentages
         ("9876543210, income 148000, 2021, 81.5%", "9876543210, income 148000, 2021, 81.5%"),
+        # kept: a certificate's own number ("क्रमांक" reads "मांक" in some PDF text layers)
+        (" मांक: 42031458382", " मांक: 42031458382"),
+        ("Certificate No. 42031458382", "Certificate No. 42031458382"),
+        # still masked: Aadhaar-sized, or an Aadhaar/bank number with the same label
+        ("क्रमांक: 123456789012", "क्रमांक: [number ending 9012]"),
+        ("खाते क्रमांक: 12345678901", "खाते क्रमांक: [number ending 8901]"),
+        ("Aadhaar Certificate No 1234 5678 9012", "Aadhaar Certificate No [number ending 9012]"),
+        ("Bank A/c cert no 12345678901", "Bank A/c cert no [number ending 8901]"),
+        ("12345678901", "[number ending 8901]"),
     ],
 )
 def test_redact_ids(raw: str, expected: str) -> None:

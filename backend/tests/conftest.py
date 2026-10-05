@@ -13,6 +13,8 @@ def _fixture_packs(monkeypatch: pytest.MonkeyPatch):
     from app.research import packs
 
     monkeypatch.setattr(packs, "KNOWLEDGE", Path(__file__).parent / "fixtures" / "knowledge")
+    # The fixture packs are verified for 2026-27; tests must not change meaning next June.
+    monkeypatch.setenv("ACADEMIC_YEAR", "2026-27")
     # a local .env with PACKS_INCLUDE_DRAFT=true must not change what tests see
     monkeypatch.setattr(packs, "get_settings", lambda: Settings(_env_file=None))
     packs.all_packs.cache_clear()
@@ -58,6 +60,7 @@ class FakeStore:
         self.fetched: list[dict] = []
         self.research: list[dict] = []
         self.cache: list[dict] = []  # research_cache: shared, no user scoping
+        self.field_values: list[dict] = []
 
     def _own(self, user_id: str) -> bool:
         return user_id == self.user_id
@@ -198,6 +201,28 @@ class FakeStore:
         self.research.append(row)
         return row
 
+    def add_field_value(self, _db, user_id, session_id, values):
+        assert self._own(user_id)
+        if not values.get("source_type") or not values.get("source_ref"):
+            raise ValueError("a field value needs source_type and source_ref")
+        row = {
+            "id": f"fv{len(self.field_values) + 1}",
+            "created_at": f"2026-10-05T10:00:{len(self.field_values):02d}+00:00",
+            **values,
+            "user_id": user_id,
+            "session_id": session_id,
+        }
+        self.field_values.append(row)
+        return row
+
+    def list_field_values(self, _db, user_id, session_id):
+        assert self._own(user_id)
+        return [r for r in self.field_values if r["session_id"] == session_id]
+
+    def list_documents(self, _db, user_id, session_id, full=False):
+        assert self._own(user_id)
+        return []
+
     def latest_research(self, _db, user_id, session_id, scheme, kind=None):
         assert self._own(user_id)
         rows = [
@@ -235,6 +260,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         "find_fetched",
         "add_research",
         "latest_research",
+        "add_field_value",
+        "list_field_values",
+        "list_documents",
         "list_fetched",
         "fresh_research_cache",
         "put_research_cache",
@@ -254,6 +282,7 @@ COMPLETE_PROFILE = {
     "ssc_percentage": 88.2,
     "hsc_year": 2023,
     "hsc_percentage": 81.5,
+    "entry_qualification": "hsc",
     "current_course": "B.E. Computer",
     "current_year": 2,
 }

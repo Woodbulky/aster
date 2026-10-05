@@ -74,23 +74,35 @@
         "hi": ""
       },
       "logic": {
-        "in": [
+        "or": [
           {
-            "var": "profile.category"
+            "in": [
+              {
+                "var": "profile.category"
+              },
+              [
+                "Open",
+                "EWS",
+                "SEBC"
+              ]
+            ]
           },
-          [
-            "Open",
-            "EWS",
-            "SEBC"
-          ]
+          {
+            "in": [
+              {
+                "var": "answers.admission_category"
+              },
+              [
+                "open",
+                "SEBC"
+              ]
+            ]
+          }
         ]
       },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
-      },
-      "ask_if_unknown": {
-        "field_key": "category"
       }
     },
     {
@@ -100,7 +112,14 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.first_two_children"
+          },
+          "yes"
+        ]
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "As per Government Resolution first two children are eligible for scheme."
@@ -113,7 +132,14 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "answers.other_scholarship"
+          },
+          "no"
+        ]
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Applicant should not avail any other scholarship or stipend."
@@ -126,15 +152,93 @@
         "mr": "",
         "hi": ""
       },
-      "logic": null,
+      "logic": {
+        "==": [
+          {
+            "var": "profile.course_mode"
+          },
+          "regular"
+        ]
+      },
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Students are not eligible who has taken an admission in Distance Education, virtual learning and part time courses."
+      },
+      "ask_if_unknown": {
+        "field_key": "course_mode"
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "had_gap",
+      "text": {
+        "en": "Did you have a gap (a year without study) in your education?",
+        "mr": "तुमच्या शिक्षणात खंड (शिक्षण न घेतलेले वर्ष) पडला होता का?",
+        "hi": "क्या आपकी पढ़ाई में कोई अंतराल (बिना पढ़ाई का साल) रहा है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Gap Related Document(if Gap is there)"
+      }
+    },
+    {
+      "id": "cap_course",
+      "text": {
+        "en": "Is your course B.Ed, Law, B.P.Ed or M.P.Ed?",
+        "mr": "तुमचा अभ्यासक्रम B.Ed, Law, B.P.Ed किंवा M.P.Ed आहे का?",
+        "hi": "क्या आपका कोर्स B.Ed, Law, B.P.Ed या M.P.Ed है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "CAP Related document.(only for B.ed,Law, BPed,MPed)."
+      }
+    },
+    {
+      "id": "admission_category",
+      "text": {
+        "en": "Under which category did you take admission to your course?",
+        "mr": "तुम्ही अभ्यासक्रमाला कोणत्या प्रवर्गातून प्रवेश घेतला?",
+        "hi": "आपने कोर्स में किस श्रेणी से दाख़िला लिया?"
+      },
+      "options": [
+        "open",
+        "SEBC",
+        "other reserved"
+      ],
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Candidates are eligible those who have taken an admission under general category and SEBC Category."
+      }
+    },
+    {
+      "id": "first_two_children",
+      "text": {
+        "en": "Are you one of the first two children of your parents?",
+        "mr": "तुम्ही तुमच्या पालकांच्या पहिल्या दोन अपत्यांपैकी एक आहात का?",
+        "hi": "क्या आप अपने माता-पिता की पहली दो संतानों में से हैं?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "As per Government Resolution first two children are eligible for scheme."
+      }
+    },
+    {
+      "id": "other_scholarship",
+      "text": {
+        "en": "Are you getting any other scholarship, stipend, fee waiver or reimbursement this year?",
+        "mr": "तुम्हाला या वर्षी दुसरी शिष्यवृत्ती, विद्यावेतन, शुल्कमाफी किंवा शुल्क परतावा मिळतो का?",
+        "hi": "क्या आपको इस साल कोई दूसरी छात्रवृत्ति, वजीफ़ा, फ़ीस माफ़ी या फ़ीस प्रतिपूर्ति मिलती है?"
+      },
+      "source": {
+        "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
+        "quote": "Applicant should not avail any other scholarship or stipend."
       }
     }
   ],
   "documents": [
     {
+      "id": "domicile_certificate",
       "doc_type": "domicile_certificate",
       "required": true,
       "required_if": null,
@@ -149,6 +253,7 @@
       }
     },
     {
+      "id": "income_certificate",
       "doc_type": "income_certificate",
       "required": true,
       "required_if": null,
@@ -160,9 +265,16 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Students should submit previous year Annual income certificate issued by Authorized official."
+      },
+      "holder": "either",
+      "period": {
+        "en": "previous academic year",
+        "mr": "मागील शैक्षणिक वर्ष",
+        "hi": "पिछला शैक्षणिक वर्ष"
       }
     },
     {
+      "id": "two_children_declaration",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -174,9 +286,11 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Family Declaration Certificate about two children’s."
-      }
+      },
+      "holder": "parent"
     },
     {
+      "id": "attendance_certificate",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -191,6 +305,7 @@
       }
     },
     {
+      "id": "previous_year_marksheet",
       "doc_type": "other",
       "required": true,
       "required_if": null,
@@ -202,12 +317,25 @@
       "source": {
         "url": "https://mahadbt.maharashtra.gov.in/SchemeData/SchemeData?str=E9DDFA703C38E51AA86467549C6E0CFFDFD61E992C8610ED352EC9DEF886C9CD",
         "quote": "Previous year Mark sheet."
+      },
+      "period": {
+        "en": "previous academic year",
+        "mr": "मागील शैक्षणिक वर्ष",
+        "hi": "पिछला शैक्षणिक वर्ष"
       }
     },
     {
+      "id": "gap_certificate",
       "doc_type": "gap_certificate",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.had_gap"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "Gap document (if you had a gap)",
         "mr": "",
@@ -219,9 +347,17 @@
       }
     },
     {
+      "id": "cap_document",
       "doc_type": "other",
-      "required": false,
-      "required_if": null,
+      "required": true,
+      "required_if": {
+        "==": [
+          {
+            "var": "answers.cap_course"
+          },
+          "yes"
+        ]
+      },
       "text": {
         "en": "CAP document (only for B.Ed, Law, B.P.Ed, M.P.Ed)",
         "mr": "",

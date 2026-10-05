@@ -311,3 +311,93 @@ def test_vault_reuses_the_masked_pages_of_a_deleted_id_original(m8, monkeypatch)
         f"u1/00000000-0000-0000-0000-000000000002/{new}/p1.png",
         f"u1/00000000-0000-0000-0000-000000000002/{new}/p2.png",
     ]
+
+
+def test_eligibility_answer_tap(m8, monkeypatch) -> None:
+    from app.agent.tools import eligibility
+    from app.verify import checks
+    from tests.test_eligibility import INCOME_SPLIT
+
+    c, _ = m8
+    sid = "00000000-0000-0000-0000-000000000004"
+    session = {"id": sid, "user_id": "u1", "scheme_key": "demo.path", "phase": "eligibility"}
+    monkeypatch.setattr(repo, "get_session", lambda _db, u, s: session if u == "u1" else None)
+    for mod in (eligibility, checks):
+        monkeypatch.setattr(mod, "usable_packs", lambda: {"demo.path": INCOME_SPLIT})
+    monkeypatch.setattr(repo, "get_profile", lambda _db, u: {"annual_family_income": 500000})
+    fields: list[dict] = []
+    msgs: list[dict] = []
+    monkeypatch.setattr(repo, "list_field_values", lambda *a: list(fields))
+    monkeypatch.setattr(repo, "write_audit", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        repo, "add_message", lambda _db, u, s, v: msgs.append(v) or {"id": f"m{len(msgs)}"}
+    )
+    monkeypatch.setattr(
+        repo, "add_field_value", lambda _db, u, s, v: fields.append({"created_at": "1", **v})
+    )
+    path = f"/api/sessions/{sid}/eligibility/answer"
+    bad = c.post(path, json={"question_id": "professional_course", "answer": "maybe"}, headers=AUTH)
+    assert bad.status_code == 400 and msgs == []  # nothing stored for an invalid answer
+    r = c.post(path, json={"question_id": "professional_course", "answer": "no"}, headers=AUTH)
+    assert r.status_code == 200
+    assert msgs[0]["input_mode"] == "ui"  # the tap is the user's message (guardrail 2)
+    assert fields[-1]["source_ref"]["message_id"] == "m1"
+    got = {x["id"]: x["status"] for x in r.json()["results"]}
+    assert got == {"income_8": "not_applicable", "income_1": "not_met"}
+    # another user's session is not reachable
+    monkeypatch.setattr(repo, "get_session", lambda *a: None)
+    miss = c.post(path, json={"question_id": "professional_course", "answer": "no"}, headers=AUTH)
+    assert miss.status_code == 404
+
+
+def test_requirement_answer_tap_and_upload_slot(m8, monkeypatch) -> None:
+    from app.verify import checks
+    from tests.test_requirements import HOSTEL
+
+    c, st = m8
+    st.consent = {"granted": True}
+    sid = "00000000-0000-0000-0000-000000000003"
+    monkeypatch.setattr(
+        repo, "get_session", lambda _db, u, s: {"id": s, "user_id": u, "scheme_key": "demo.h"}
+    )
+    monkeypatch.setattr(checks, "usable_packs", lambda: {"demo.h": HOSTEL})
+    fields: list[dict] = []
+    msgs: list[dict] = []
+    monkeypatch.setattr(repo, "list_field_values", lambda *a: list(fields))
+    monkeypatch.setattr(repo, "list_documents", lambda *a, **kw: [])
+    monkeypatch.setattr(repo, "list_flags", lambda *a: [])
+    monkeypatch.setattr(repo, "add_rule_evaluations", lambda *a: None)
+    monkeypatch.setattr(repo, "list_profile_sources", lambda *a: [])
+    monkeypatch.setattr(
+        repo, "add_message", lambda _db, u, s, v: msgs.append(v) or {"id": f"m{len(msgs)}"}
+    )
+
+    def add_fv(_db, u, s, v):
+        fields.append({"id": "fv", "created_at": str(len(fields)), **v})
+
+    monkeypatch.setattr(repo, "add_field_value", add_fv)
+    path = f"/api/sessions/{sid}/requirements/answer"
+    bad = c.post(path, json={"question_id": "hosteller", "answer": "maybe"}, headers=AUTH)
+    assert bad.status_code == 400 and msgs == []  # nothing stored for an invalid answer
+    assert (
+        c.post(path, json={"question_id": "nope", "answer": "yes"}, headers=AUTH).status_code == 400
+    )
+    r = c.post(path, json={"question_id": "hosteller", "answer": "no", "lang": "mr"}, headers=AUTH)
+    assert r.status_code == 200
+    assert msgs[0]["input_mode"] == "ui" and msgs[0]["lang"] == "mr"
+    assert fields[-1]["source_ref"] == {
+        "message_id": "m1",
+        "via": "tap",
+        "question_id": "hosteller",
+    }
+    items = {i["id"]: i for i in r.json()["items"]}
+    assert items["hostel_certificate"]["need"] == "not_needed"
+
+    up = f"/api/sessions/{sid}/documents"
+    body = {
+        "document_id": "00000000-0000-0000-0000-0000000000d2",
+        "doc_type": "income_certificate",
+        "mime": "application/pdf",
+        "requirement_id": "declaration",  # an "other" requirement: not an income certificate
+    }
+    assert c.post(up, json=body, headers=AUTH).status_code == 400

@@ -21,6 +21,7 @@ from app.agent.tools.profile import masked
 from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.llm.client import LLMUnavailable, chat_stream
+from app.research.packs import usable_packs
 from app.speech.stream import Speaker
 from app.verify.checks import flag_summary, propose_profile_update, reread_after
 from app.verify.pipeline import process_document
@@ -212,6 +213,22 @@ async def _system_prompt(ctx: Ctx, assistant_name: str) -> str:
         f"Saved profile (masked): {json.dumps(masked(profile), ensure_ascii=False, default=str)}",
         f"Chosen scholarship: {_scheme_line(ctx.session)}",
     ]
+    if pack := usable_packs().get(ctx.session.get("scheme_key") or ""):
+        # The history keeps reply text only: without this, a question about the scheme (amount,
+        # test, helpline) after the research step had no facts to answer from.
+        facts = {
+            "summary": pack.summary.get(ctx.lang),
+            "deadlines": {
+                d.label.get(ctx.lang): d.date and d.date.isoformat() for d in pack.deadlines
+            },
+            "notes": pack.notes,
+            "official_urls": pack.official_urls,
+        }
+        state.append(
+            "Official facts about the chosen scholarship (reviewed knowledge pack, like a tool "
+            "result; answer questions about it from these, say you don't know the rest): "
+            + json.dumps(facts, ensure_ascii=False)
+        )
     if phase == "onboarding" and missing:
         state.append(f"Missing core fields: {missing}")
         state.append(f"Suggested next question: {t(ctx.lang, f'ask.{missing[0]}')}")

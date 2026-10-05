@@ -2,7 +2,7 @@
 import type { Lang } from "@/lib/i18n";
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "speaking" | "happy" | "concerned";
-export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed" | "flag_resolved" | "screen_share_started";
+export type UiEventName = "profile_confirmed" | "profile_rejected" | "form_selected" | "documents_requested" | "document_processed" | "flag_resolved" | "requirement_answered" | "eligibility_answered" | "screen_share_started";
 
 // ---------- client -> server ----------
 export type ClientMsg =
@@ -20,17 +20,25 @@ export type FrameReason = "utterance" | "change" | "manual";
 
 // ---------- cards ----------
 export type ConfirmProfilePayload = { proposal_id: string; updates: Record<string, string | number> };
-export type CriterionCounts = { met: number; not_met: number; unknown: number };
+/** unknown = "needs confirmation". not_applicable: absent in cards saved before it existed. */
+export type CriterionCounts = { met: number; not_met: number; unknown: number; not_applicable?: number };
 export type SchemeOption = { portal: string; scheme_key: string; name: string; draft: boolean } & CriterionCounts;
 export type SchemeSuggestionsPayload = { options: SchemeOption[]; note: string };
 export type Source = { url: string; quote: string };
+/** What an unknown criterion still waits for. A question: tap an option. A profile value: tell Aster.
+ * read: Aster can't check it from answers; read the rule at the source. */
+export type CriterionNeed =
+  | { kind: "question"; id: string; text: string; options: string[] }
+  | { kind: "profile"; field: string; text: string }
+  | { kind: "read"; text: string };
 export type CriterionResult = {
   id: string;
   text: string;
-  status: "met" | "not_met" | "unknown";
+  status: "met" | "not_met" | "unknown" | "not_applicable";
   reason: string; // "Meets this — per <site>" etc. (guardrail 1: never a final verdict)
   source: Source;
   ask_field: string | null;
+  needs?: CriterionNeed[]; // absent in cards saved before it existed
 };
 export type EligibilityPayload = {
   scheme_key: string | null;
@@ -39,10 +47,24 @@ export type EligibilityPayload = {
   draft: boolean; // dev only: pack not yet verified by the team
   results: CriterionResult[];
   counts: CriterionCounts;
-  deadlines: { label: string; date: string | null; passed: boolean; source: Source }[];
+  /** unconfirmed_since: the deadline was last checked that long ago (or "never"); null = recently checked. */
+  deadlines: { label: string; date: string | null; passed: boolean; unconfirmed_since: string | null; source: Source }[];
+  /** "Rules for 2026-27, checked by the team on …" (verified packs only). */
+  checked: string | null;
   note: string;
 };
-export type ResearchItem = { text: string; source_url: string; quote: string; content_id: string; site: string; fetched_on: string };
+export type ResearchItem = {
+  text: string;
+  source_url: string;
+  quote: string;
+  content_id: string;
+  site: string;
+  fetched_on: string;
+  year_on_page?: string; // only when the page itself states it
+  doc_types?: string[];
+  required?: "yes" | "if" | "optional";
+  condition?: string | null;
+};
 export type ResearchSummaryPayload = {
   scheme: string;
   eligibility: ResearchItem[];
@@ -51,16 +73,31 @@ export type ResearchSummaryPayload = {
   note: string;
 };
 export type DocStatus = "missing" | "uploaded" | "processing" | "extracted" | "failed";
+/** A question whose answer decides whether a document is needed ("Do you live in a hostel?"). */
+export type RequirementQuestion = { id: string; text: string; options: string[]; source: Source | null };
+/** need: required | optional | ask (answer `ask` first; never silently optional) | not_needed | later (asked after applying). */
+export type Need = "required" | "optional" | "ask" | "not_needed" | "later";
+/** One scheme requirement (backend app/verify/requirements.py status()). */
 export type ChecklistItem = {
-  doc_type: string;
+  id: string;
+  doc_type: string; // the upload slot: doc_types[0]
+  doc_types: string[]; // any of these satisfies it ("admission letter or fee receipt")
+  type_labels: string[]; // what each of doc_types is called
   label: string;
-  required: boolean;
+  required: boolean; // need === "required"
+  need: Need;
+  ask: RequirementQuestion | { profile_field: string | null } | null;
+  questions: RequirementQuestion[];
+  stage: "apply" | "institute" | "later";
+  period: string | null;
+  holder: "student" | "parent" | "either";
   source: Source | null; // null = recommended by Aster, not in the official list
   note: string | null;
+  origin: "pack" | "live" | "recommended";
   status: DocStatus;
   document_id: string | null;
 };
-export type DocumentChecklistPayload = { session_id: string; scheme: string; items: ChecklistItem[]; others: string[]; note: string };
+export type DocumentChecklistPayload = { session_id: string; scheme: string; items: ChecklistItem[]; note: string };
 export type BBox = [number, number, number, number]; // x0, y0, x1, y1 in page pixels
 /** Where a value came from (guardrail 2). Document sources point at OCR lines; bbox null = read by the vision model (no box). */
 export type FieldSource = { document_id: string; doc_type: string; line_ids: string[]; page: number; bbox: (BBox | null)[] };
@@ -103,7 +140,13 @@ export type FlagPayload = {
   candidates: FlagCandidate[];
   can_pick: boolean;
   can_type: boolean;
-  doc: { doc_type: string; label: string | null; source: Source | null } | null;
+  doc: {
+    doc_type: string;
+    requirement_id?: string | null;
+    label: string | null;
+    source: Source | null;
+    question?: RequirementQuestion | { profile_field: string | null } | null;
+  } | null;
   status: "open" | "resolved" | "acknowledged";
 };
 export type FlagSummary = { flag_id: string; type: string; severity: "block" | "warn"; field: string | null; message: string | null; values: string[]; status: string };

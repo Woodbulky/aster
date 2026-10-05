@@ -16,7 +16,7 @@ import httpx
 import pymupdf
 
 from app.config import Settings
-from app.db.supabase import _ID_NUMBER, redact_ids
+from app.db.supabase import id_numbers, redact_ids
 from app.llm.client import chat_stream, gpu_url
 
 log = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ def _mask_ids(page: Page, raw: list[tuple[str, list[float] | None]]) -> bytes:
     for text, bbox in raw:
         if not bbox:
             continue
-        for m in _ID_NUMBER.finditer(text):
+        for m in id_numbers(text):
             x0, y0, x1, y1 = bbox
             w = (x1 - x0) / max(len(text), 1)
             left = x0 + w * (m.start() - 1)  # one char of slack: widths are uneven

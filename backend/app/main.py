@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import documents, me, sessions
 from app.config import Settings, get_settings
 from app.llm.client import breakers, fallback_ready, gpu_url, route
-from app.research.packs import all_packs, usable_packs
+from app.research.packs import all_packs, current_cycle, freshness, usable_packs
 from app.research.search import breaker as search_breaker
 from app.speech.router import breakers as speech_breakers
 from app.ws import voice
@@ -67,5 +67,14 @@ def health(s: Annotated[Settings, Depends(get_settings)]) -> dict[str, object]:
             else "open",
         },
         # Packs live outside backend/ (repo-root knowledge/): a 0 on Render means they didn't ship.
-        "packs": {"usable": len(usable_packs(s)), "total": len(all_packs())},
+        "packs": {
+            "usable": len(usable_packs(s)),
+            "total": len(all_packs()),
+            "cycle": current_cycle(s),
+            # usable packs whose rules or deadlines are due a recheck (`packs stale`)
+            "stale": sum(
+                f["rules_stale"] or f["deadlines_stale"]
+                for f in (freshness(p, s) for p in usable_packs(s).values())
+            ),
+        },
     }

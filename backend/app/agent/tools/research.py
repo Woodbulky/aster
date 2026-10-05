@@ -22,7 +22,7 @@ from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.research import contextdev
 from app.research.fetch import DEFAULT_FOCUS, FetchError, Page, excerpt, fetch, quote_in
-from app.research.packs import usable_packs
+from app.research.packs import DocType, current_cycle, freshness, usable_packs
 from app.research.search import SearchUnavailable, find
 
 log = logging.getLogger(__name__)
@@ -74,6 +74,9 @@ def get_knowledge_pack(ctx: Ctx, _: PackArgs) -> ToolResult:
         data={
             "name": pack.name.get(lang),
             "status": pack.status,
+            "academic_year": pack.academic_year,
+            "route": pack.route,
+            "checked": freshness(pack),
             "department": pack.department,
             "official_urls": pack.official_urls,
             "summary": pack.summary.get(lang),
@@ -300,6 +303,23 @@ class Item(BaseModel):
         description="copied exactly from the fetched text"
     )
     content_id: str
+    # documents only: what it is and when it is needed (one requirement each, tracked like a
+    # pack's; requirements.from_live)
+    doc_types: list[DocType] = Field(
+        default=[], max_length=3, description="documents: its type(s); 'other' if none fits"
+    )
+    required: Literal["yes", "if", "optional"] = Field(
+        default="yes", description="documents: yes, if (only in some cases) or optional"
+    )
+    condition: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None = (
+        Field(
+            default=None,
+            description="documents with required=if: when, e.g. 'you live in a hostel'",
+        )
+    )
+    year_on_page: Annotated[str, StringConstraints(strip_whitespace=True, max_length=9)] | None = (
+        Field(default=None, description="the academic year the page states this for, e.g. 2026-27")
+    )
 
 
 class SaveArgs(BaseModel):
@@ -307,7 +327,7 @@ class SaveArgs(BaseModel):
     items: list[Item] = Field(min_length=1, max_length=25)
 
 
-def check_item(ctx: Ctx, it: Item) -> tuple[dict[str, str] | None, str | None]:
+def check_item(ctx: Ctx, it: Item) -> tuple[dict[str, Any] | None, str | None]:
     """-> (item to store, None) or (None, why it was rejected)."""
     if len(it.quote) < MIN_QUOTE:
         return None, f"quote shorter than {MIN_QUOTE} characters"
@@ -319,14 +339,20 @@ def check_item(ctx: Ctx, it: Item) -> tuple[dict[str, str] | None, str | None]:
     if not quote_in(it.quote, page["text"]):
         return None, "quote not found in the fetched text; copy it exactly"
     fetched = page.get("fetched_at") or datetime.now(UTC).isoformat()
-    return {
+    out: dict[str, Any] = {
         "text": it.text,
         "source_url": page["url"],
         "quote": it.quote,
         "content_id": page["id"],
         "site": site(page["url"]),
         "fetched_on": str(fetched)[:10],
-    }, None
+    }
+    # A year only counts if the page really states it (same idea as the quote check).
+    if it.year_on_page and it.year_on_page in page["text"]:
+        out["year_on_page"] = it.year_on_page
+    if it.kind == "documents":
+        out |= {"doc_types": it.doc_types, "required": it.required, "condition": it.condition}
+    return out, None
 
 
 @register(
@@ -341,7 +367,7 @@ def save_research(ctx: Ctx, args: SaveArgs) -> ToolResult:
     scheme = scheme_of(ctx.session)
     if not scheme:
         return ToolResult(ok=False, error="no scheme chosen yet")
-    kept: dict[str, list[dict[str, str]]] = {"eligibility": [], "documents": []}
+    kept: dict[str, list[dict[str, Any]]] = {"eligibility": [], "documents": []}
     rejected = []
     for it in args.items:
         ok, why = check_item(ctx, it)
@@ -379,11 +405,17 @@ def save_research(ctx: Ctx, args: SaveArgs) -> ToolResult:
 
 
 # ---------- research shared across students ----------
-def cache_key(name: str) -> str:
-    return default_process(name)[:200]
+def cycle_of(session: dict[str, Any]) -> str:
+    """The academic year this application is for (fixed when the scheme was chosen)."""
+    return session.get("academic_year") or current_cycle()
 
 
-def share_research(ctx: Ctx, scheme: str, kept: dict[str, list[dict[str, str]]]) -> None:
+def cache_key(name: str, cycle: str) -> str:
+    """Per academic year: last year's rules must not answer this year's student."""
+    return f"{cycle}|{default_process(name)}"[:200]
+
+
+def share_research(ctx: Ctx, scheme: str, kept: dict[str, list[dict[str, Any]]]) -> None:
     """Quote-checked items from pages a search engine found (never a link someone pasted: one
     student must not be able to put "rules" in front of another), without content_id (that row
     is this student's), ID-like numbers redacted from the model's own text."""
@@ -394,7 +426,8 @@ def share_research(ctx: Ctx, scheme: str, kept: dict[str, list[dict[str, str]]])
     items = {
         k: [
             {
-                f: repo.redact_ids(x) if f == "text" else x
+                # the model's own words (text, condition): no ID-like numbers reach other students
+                f: repo.redact_ids(x) if f in ("text", "condition") and x else x
                 for f, x in it.items()
                 if f != "content_id"
             }
@@ -410,7 +443,7 @@ def share_research(ctx: Ctx, scheme: str, kept: dict[str, list[dict[str, str]]])
         repo.put_research_cache(
             ctx.db,
             {
-                "scheme_norm": cache_key(scheme),
+                "scheme_norm": cache_key(scheme, cycle_of(ctx.session)),
                 "scheme_name": scheme[:200],
                 "items": items,
                 "saved_at": datetime.now(UTC).isoformat(),
@@ -422,13 +455,16 @@ def share_research(ctx: Ctx, scheme: str, kept: dict[str, list[dict[str, str]]])
 
 
 def cached_research(ctx: Ctx, name: str) -> dict[str, Any] | None:
-    """A fresh shared row for this scheme name (exact, else a close match), or None."""
+    """A fresh shared row for this scheme name in this academic year (exact, else a close
+    match), or None."""
     try:
         rows = repo.fresh_research_cache(ctx.db)
     except Exception:
         log.exception("research cache read failed")
         return None
-    key = cache_key(name)
+    cycle = cycle_of(ctx.session)
+    key = cache_key(name, cycle)
+    rows = [r for r in rows if r["scheme_norm"].startswith(f"{cycle}|")]
     if hit := next((r for r in rows if r["scheme_norm"] == key), None):
         return hit
     scored = [(fuzz.token_sort_ratio(key, r["scheme_norm"]), r) for r in rows]

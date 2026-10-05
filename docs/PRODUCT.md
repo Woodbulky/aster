@@ -12,7 +12,7 @@ A student talks to Aster in Marathi, Hindi or English. Aster learns their profil
 |---|---|---|---|
 | 1 | Sign in | Google or email login | Supabase Auth; a profile row is created by trigger |
 | 2 | Meet Aster | Pick avatar + name + language | Saves `assistant_settings` |
-| 3 | Onboarding | Aster asks ~10 core details by voice/chat (name, DOB, gender, district, category, 10th/12th year + %, course + year, family income) | Agent proposes values → confirm card → saved to `profiles`. Sensitive fields (caste, religion) asked only with a short "why" + consent |
+| 3 | Onboarding | Aster asks 5 core details by voice/chat (name, current course, what you joined it after: 10th / 12th / diploma / degree, category, family income). Nothing else upfront: 10th/12th results, DOB, district, admission year, course mode and scheme-specific facts are asked later, only when a scheme needs them (a diploma student is never asked for 12th results) | Agent proposes values → confirm card → saved to `profiles`. Sensitive fields (caste, religion) asked only with a short "why" + consent |
 | 4 | Choose form | "Which scholarship?" → any name, or "MahaDBT" → a ranked card of schemes | Sets the scheme on `form_sessions`. Schemes with a pack are ranked against the profile; any other name is researched live |
 | 5 | Research | Aster says "Let me check the official rules…" (tool activity visible) | Loads the verified knowledge pack, else does live research (search → fetch → PDF). Every criterion/document has `source_url` + quote |
 | 6 | Eligibility | Card: each criterion ✅ / ❌ / ❔ with reason + source link. Spoken summary | Deterministic rules on profile vs criteria; LLM only explains |

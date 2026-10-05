@@ -122,6 +122,7 @@ export type Database = {
           ocr: Json | null
           page_count: number | null
           quality: Json | null
+          requirement_id: string | null
           session_id: string
           sha256: string | null
           status: string
@@ -137,6 +138,7 @@ export type Database = {
           ocr?: Json | null
           page_count?: number | null
           quality?: Json | null
+          requirement_id?: string | null
           session_id: string
           sha256?: string | null
           status?: string
@@ -152,6 +154,7 @@ export type Database = {
           ocr?: Json | null
           page_count?: number | null
           quality?: Json | null
+          requirement_id?: string | null
           session_id?: string
           sha256?: string | null
           status?: string
@@ -327,6 +330,7 @@ export type Database = {
       }
       form_sessions: {
         Row: {
+          academic_year: string | null
           created_at: string
           id: string
           phase: string
@@ -339,6 +343,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          academic_year?: string | null
           created_at?: string
           id?: string
           phase?: string
@@ -351,6 +356,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          academic_year?: string | null
           created_at?: string
           id?: string
           phase?: string
@@ -528,9 +534,11 @@ export type Database = {
       profiles: {
         Row: {
           aadhaar_last4: string | null
+          admission_year: number | null
           annual_family_income: number | null
           caste: string | null
           category: string | null
+          course_mode: string | null
           created_at: string
           current_course: string | null
           current_year: number | null
@@ -538,6 +546,7 @@ export type Database = {
           dob: string | null
           domicile_state: string | null
           email: string | null
+          entry_qualification: string | null
           full_name: string | null
           full_name_local: string | null
           gender: string | null
@@ -557,9 +566,11 @@ export type Database = {
         }
         Insert: {
           aadhaar_last4?: string | null
+          admission_year?: number | null
           annual_family_income?: number | null
           caste?: string | null
           category?: string | null
+          course_mode?: string | null
           created_at?: string
           current_course?: string | null
           current_year?: number | null
@@ -567,6 +578,7 @@ export type Database = {
           dob?: string | null
           domicile_state?: string | null
           email?: string | null
+          entry_qualification?: string | null
           full_name?: string | null
           full_name_local?: string | null
           gender?: string | null
@@ -586,9 +598,11 @@ export type Database = {
         }
         Update: {
           aadhaar_last4?: string | null
+          admission_year?: number | null
           annual_family_income?: number | null
           caste?: string | null
           category?: string | null
+          course_mode?: string | null
           created_at?: string
           current_course?: string | null
           current_year?: number | null
@@ -596,6 +610,7 @@ export type Database = {
           dob?: string | null
           domicile_state?: string | null
           email?: string | null
+          entry_qualification?: string | null
           full_name?: string | null
           full_name_local?: string | null
           gender?: string | null

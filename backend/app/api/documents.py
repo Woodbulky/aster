@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from storage3.exceptions import StorageApiError
 
+from app.agent.tools.eligibility import eligibility_payload
 from app.api.me import require_consent
 from app.audit import fetch as fetch_audit
 from app.audit import verify_chain
@@ -17,7 +18,17 @@ from app.config import Settings, get_settings
 from app.db import supabase as repo
 from app.deps import Db, UserId
 from app.research.packs import DOC_TYPES
-from app.verify.checks import ResolveError, readiness, reread_after, resolve
+from app.verify.checks import (
+    AnswerError,
+    ResolveError,
+    find_question,
+    readiness,
+    record_answer,
+    reread_after,
+    resolve,
+    session_reqs,
+    store_answer,
+)
 from app.verify.pipeline import process_document
 
 router = APIRouter(prefix="/api/sessions/{session_id}")
@@ -32,6 +43,8 @@ class DocumentIn(BaseModel):
     doc_type: Literal[DOC_TYPES]  # type: ignore[valid-type]
     mime: Literal["application/pdf", "image/jpeg", "image/png", "image/webp"]
     quality: dict[str, float] | None = Field(default=None, max_length=5)  # client blur check
+    # The scheme requirement this upload is for (two "other" documents are two requirements).
+    requirement_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,64}$")
 
 
 def _session(db: Any, user_id: str, session_id: UUID) -> dict[str, Any]:
@@ -52,9 +65,15 @@ def add_document(
 ) -> dict[str, Any]:
     """Registers an uploaded file and starts the pipeline. Posting a failed document again
     retries it."""
-    _session(db, user_id, session_id)
+    session = _session(db, user_id, session_id)
     require_consent(db, user_id, "documents")  # before anything reads the file
     doc_id, sid = str(body.document_id), str(session_id)
+    if body.requirement_id:
+        req = next(
+            (r for r in session_reqs(db, user_id, session) if r.id == body.requirement_id), None
+        )
+        if not req or body.doc_type not in req.doc_types:
+            raise HTTPException(400, "not a document this scholarship asks for")
     doc = repo.get_document(db, user_id, doc_id)
     if doc:
         if doc["session_id"] != sid:
@@ -75,6 +94,7 @@ def add_document(
                 "storage_path": f"{user_id}/{sid}/{name}",
                 "mime": body.mime,
                 "quality": body.quality,
+                "requirement_id": body.requirement_id,
             },
         )
         repo.write_audit(db, user_id, sid, "document.uploaded", {"doc_type": body.doc_type}, "user")
@@ -135,6 +155,70 @@ def add_from_vault(
     repo.write_audit(db, user_id, sid, "document.reused", {"doc_type": t}, "user")
     tasks.add_task(process_document, s, user_id, sid, doc_id)
     return {"document_id": doc_id, "status": "uploaded"}
+
+
+class AnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question_id: str = Field(pattern=r"^[a-z0-9_]{1,64}$")
+    answer: str = Field(min_length=1, max_length=40)
+    lang: Literal["mr", "hi", "en"] = "en"  # the UI language: the stored message's lang
+
+
+def _tap_answer(db: Any, user_id: str, session: dict[str, Any], body: AnswerIn, record: Any) -> Any:
+    """A tap on a scheme question ("Do you live in a hostel?"). The tap is stored as the user's
+    message (input_mode ui) and the answer points at it (guardrail 2). record: record_answer
+    (documents: -> the requirement rows) or store_answer (eligibility: nothing to re-check)."""
+    sid = session["id"]
+    q = find_question(db, user_id, session, body.question_id, body.lang)
+    if not q:
+        raise HTTPException(400, "no such question for this scholarship")
+    if body.answer.strip().casefold() not in {o.casefold() for o in q["options"]}:
+        raise HTTPException(400, f"answer with one of {q['options']}")
+    msg = repo.add_message(
+        db,
+        user_id,
+        sid,
+        {
+            "role": "user",
+            "content": f"{q['text']} — {body.answer}",
+            "lang": body.lang,
+            "input_mode": "ui",
+        },
+    )
+    if not msg:  # guardrail 2: no message to point at, no answer
+        raise HTTPException(500, "could not save the answer; try again")
+    try:
+        return record(
+            db,
+            user_id,
+            session,
+            body.question_id,
+            body.answer,
+            source_type="text",
+            message_id=msg["id"],
+            via="tap",
+            lang=body.lang,
+        )
+    except AnswerError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@router.post("/requirements/answer")
+def answer_requirement(session_id: UUID, body: AnswerIn, db: Db, user_id: UserId) -> dict[str, Any]:
+    """-> the checklist rows after the answer."""
+    rows = _tap_answer(db, user_id, _session(db, user_id, session_id), body, record_answer)
+    return {"items": [r | {"required": r["need"] == "required"} for r in rows]}
+
+
+@router.post("/eligibility/answer")
+def answer_eligibility(session_id: UUID, body: AnswerIn, db: Db, user_id: UserId) -> dict[str, Any]:
+    """The same tap on the eligibility card -> the eligibility card after the answer."""
+    session = _session(db, user_id, session_id)
+    _tap_answer(db, user_id, session, body, store_answer)
+    payload = eligibility_payload(db, user_id, session, body.lang)
+    if payload is None:
+        raise HTTPException(404, "no eligibility to show for this session")
+    return payload
 
 
 class ResolveIn(BaseModel):
